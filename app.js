@@ -25,7 +25,56 @@ function spell(midi){let pc=midi%12,flat=["C","Db","D","Eb","E","F","Gb","G","Ab
 function clefFor(t){if(S.clef!=="auto")return S.clef;let avg=t.notes.length?t.notes.reduce((a,n)=>a+n.midi,0)/t.notes.length:60;return avg<59?"bass":"treble"}
 function vfDuration(beats){let vals=[[4,"w"],[3,"hd"],[2,"h"],[1.5,"qd"],[1,"q"],[.75,"8d"],[.5,"8"],[.375,"16d"],[.25,"16"],[.125,"32"]];let best=vals.reduce((a,b)=>Math.abs(b[0]-beats)<Math.abs(a[0]-beats)?b:a,vals[0]);return best[1]}
 function vfBeats(d){return({"w":4,"hd":3,"h":2,"qd":1.5,"q":1,"8d":.75,"8":.5,"16d":.375,"16":.25,"32":.125})[d.replace("r","")]||1}
-function sheet(){const host=$("sheet");host.replaceChildren();if(!track())return;const clef=clefFor(track()),barBeats=beatsPerBar(),bars=Math.max(1,Math.ceil(maxBeat()/barBeats)),perRow=2,rows=Math.ceil(bars/perRow),measureW=390,rowH=190,width=measureW*perRow+30,height=rows*rowH+25;let renderer;S.measureMap=[];try{renderer=new Renderer(host,Renderer.Backends.SVG);renderer.resize(width,height);const ctx=renderer.getContext();ctx.setFont("Arial",10);for(let b=0;b<bars;b++){let row=Math.floor(b/perRow),col=b%perRow,x=15+col*measureW,y=18+row*rowH,stave=new Stave(x,y,measureW-18);stave.addClef(clef).addKeySignature(S.key).addTimeSignature(S.numerator+"/"+S.denominator);stave.setContext(ctx).draw();S.measureMap.push({bar:b,x,y:stave.getYForLine(0),clef});let ns=track().notes.filter(n=>Math.floor(n.time/barBeats)===b).sort((a,b)=>a.time-b.time),tickables=[],cursor=b*barBeats;for(let i=0;i<ns.length;){let at=ns[i].time; if(at>cursor+.001){let gap=at-cursor,rest=vfDuration(gap);try{tickables.push(new StaveNote({clef,keys:[clef==="bass"?"d/3":"b/4"],duration:rest+"r"}))}catch{}cursor=at}let same=[];while(i<ns.length&&Math.abs(ns[i].time-at)<.001)same.push(ns[i++]);let duration=vfDuration(Math.max(...same.map(n=>n.duration))),keys=same.map(n=>{let sp=spell(n.midi);return{key:sp.key,acc:sp.acc}});try{let sn=new StaveNote({clef,keys:keys.map(k=>k.key),duration});keys.forEach((k,j)=>{if(k.acc)sn.addAccidental(j,new Accidental(k.acc))});sn.setStyle({fillStyle:same.some(n=>n.id===S.selected)?"#7658d9":"#26232b",strokeStyle:"#26232b"});tickables.push(sn)}catch(err){console.warn("Could not engrave note",err)}cursor=at+Math.max(...same.map(n=>n.duration))}try{let voice=new Voice({num_beats:S.numerator,beat_value:S.denominator}).setStrict(false);voice.addTickables(tickables);new Formatter().joinVoices([voice]).format([voice],measureW-75);voice.draw(ctx,stave)}catch(err){console.warn("Notation layout",err)}ctx.fillText("Bar "+(b+1),x+4,y+rowH-12)} }catch(err){console.error("VexFlow render failed",err);host.textContent="Notation could not be rendered. Please reload the page.";}host.onclick=e=>{if(!S.measureMap?.length)return;let svg=host.querySelector("svg");if(!svg)return;let r=svg.getBoundingClientRect(),px=(e.clientX-r.left)*width/r.width,py=(e.clientY-r.top)*height/r.height,map=S.measureMap.find(m=>px>=m.x&&px<m.x+measureW-18&&py>=m.y-8&&py<m.y+70);if(!map)return;let existing=track().notes.filter(n=>Math.floor(n.time/barBeats)===map.bar).map(n=>({n,x:map.x+105+(n.time%barBeats)/barBeats*235})).sort((a,b)=>Math.abs(a.x-px)-Math.abs(b.x-px))[0];if(existing&&Math.abs(existing.x-px)<19){S.selected=existing.n.id;renderInspector();return}let beat=Math.max(0,Math.min(barBeats-.0625,Math.round(((px-(map.x+105))/235*barBeats)*4)/4)),step=Math.round((map.y-py)/5),base=map.clef==="bass"?26:38,abs=base+step,oct=Math.floor(abs/7),letter=(abs%7+7)%7,midi=(oct+1)*12+[0,2,4,5,7,9,11][letter];snapshot();let n=addNote(track(),map.bar*barBeats+beat,midi);S.selected=n.id;render();changed()};}
+function sheet(){
+ const host=$("sheet");host.replaceChildren();S.measureMap=[];if(!track())return;
+ const t=track(),clef=clefFor(t),barBeats=beatsPerBar(),bars=Math.max(1,Math.ceil(maxBeat()/barBeats));
+ const pageW=1122,pageH=714,margin=48,measureW=513,systemsPerPage=4,systemH=158,barsPerPage=8,pageCount=Math.ceil(bars/barsPerPage);
+ try{
+  for(let page=0;page<pageCount;page++){
+   const pageHost=document.createElement("div");pageHost.className="score-page";
+   const title=document.createElement("div");title.className="score-page-title";title.textContent=S.name+" — "+t.name;
+   const meta=document.createElement("div");meta.className="score-page-meta";meta.textContent=S.bpm+" BPM     "+S.numerator+"/"+S.denominator+"     "+S.key;
+   pageHost.append(title,meta);host.append(pageHost);
+   const svgHost=document.createElement("div");svgHost.className="score-svg";pageHost.append(svgHost);
+   const renderer=new Renderer(svgHost,Renderer.Backends.SVG);renderer.resize(pageW,pageH);
+   const ctx=renderer.getContext();ctx.setFont("Arial",11);
+   for(let local=0;local<barsPerPage;local++){
+    const b=page*barsPerPage+local;if(b>=bars)break;
+    const row=Math.floor(local/2),col=local%2,x=margin+col*measureW,y=34+row*systemH;
+    const stave=new Stave(x,y,measureW-14);
+    if(col===0)stave.addClef(clef).addKeySignature(S.key).addTimeSignature(S.numerator+"/"+S.denominator);
+    stave.setContext(ctx).draw();
+    S.measureMap.push({bar:b,x,y:stave.getYForLine(0),clef,svg:svgHost.querySelector("svg"),width:measureW-14});
+    const notes=t.notes.filter(n=>Math.floor(n.time/barBeats)===b).sort((a,b)=>a.time-b.time);
+    const tickables=[];let cursor=b*barBeats;
+    for(let i=0;i<notes.length;){
+     const onset=notes[i].time;
+     if(onset>cursor+.001){const restDur=vfDuration(onset-cursor);try{tickables.push(new StaveNote({clef,keys:[clef==="bass"?"d/3":"b/4"],duration:restDur+"r"}))}catch{}}
+     const same=[];while(i<notes.length&&Math.abs(notes[i].time-onset)<.001)same.push(notes[i++]);
+     const dur=Math.max(.125,...same.map(n=>n.duration)),spells=same.map(n=>spell(n.midi));
+     try{const sn=new StaveNote({clef,keys:spells.map(s=>s.key),duration:vfDuration(dur)});
+      spells.forEach((s,j)=>{if(s.acc)sn.addAccidental(j,new Accidental(s.acc))});
+      if(same.some(n=>n.id===S.selected))sn.setStyle({fillStyle:"#7658d9",strokeStyle:"#7658d9"});
+      tickables.push(sn);
+     }catch(err){console.warn("Could not engrave note",err)}
+     cursor=onset+dur;
+    }
+    if(cursor<(b+1)*barBeats-.02){const restDur=vfDuration((b+1)*barBeats-cursor);try{tickables.push(new StaveNote({clef,keys:[clef==="bass"?"d/3":"b/4"],duration:restDur+"r"}))}catch{}}
+    try{const voice=new Voice({num_beats:S.numerator,beat_value:S.denominator}).setStrict(false);voice.addTickables(tickables);new Formatter().joinVoices([voice]).format([voice],measureW-135);voice.draw(ctx,stave);try{Beam.generateBeams(tickables).forEach(beam=>beam.setContext(ctx).draw())}catch{}}
+    catch(err){console.warn("Notation layout",err)}
+   }
+   const footer=document.createElement("div");footer.className="score-page-footer";footer.textContent="MidiStudio  ·  "+(page+1)+" / "+pageCount;pageHost.append(footer);
+  }
+ }catch(err){console.error("Score engraving failed",err);host.textContent="The score could not be engraved. Please reload the page."}
+ host.onclick=e=>{
+  const svg=e.target.closest("svg");if(!svg)return;const r=svg.getBoundingClientRect(),vb=svg.viewBox?.baseVal,width=vb?.width||1122,height=vb?.height||714;
+  const px=(e.clientX-r.left)*width/r.width,py=(e.clientY-r.top)*height/r.height,map=S.measureMap.find(m=>m.svg===svg&&px>=m.x&&px<m.x+m.width&&py>=m.y-10&&py<m.y+75);if(!map)return;
+  const existing=t.notes.filter(n=>Math.floor(n.time/barBeats)===map.bar).map(n=>({n,x:map.x+90+(n.time%barBeats)/barBeats*(map.width-125)})).sort((a,b)=>Math.abs(a.x-px)-Math.abs(b.x-px))[0];
+  if(existing&&Math.abs(existing.x-px)<17){S.selected=existing.n.id;renderInspector();return}
+  const beat=Math.max(0,Math.min(barBeats-.0625,Math.round(((px-(map.x+90))/(map.width-125)*barBeats)*4)/4)),step=Math.round((map.y+35-py)/5),base=map.clef==="bass"?26:38,abs=base+step,oct=Math.floor(abs/7),letter=(abs%7+7)%7,midi=(oct+1)*12+[0,2,4,5,7,9,11][letter];
+  snapshot();const n=addNote(t,map.bar*barBeats+beat,midi);S.selected=n.id;render();changed();
+ };
+}
 function render(){if(!S.tracks.length)S.tracks=[{id:uid(),name:"Track 1",notes:[],instrument:"piano",muted:false,program:0}];renderTracks();piano();sheet();renderInspector();historyButtons();$("bpm").value=S.bpm;$("timeSig").value=S.numerator+"/"+S.denominator;$("keySig").value=S.key;$("clef").value=S.clef;$("instrument").value=track().instrument||"piano";$("zoom").textContent=Math.round(S.zoom*100)+"%";$("pianoPane").hidden=S.view!=="piano";$("sheetPane").hidden=S.view!=="sheet";document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.view===S.view));$("projectName").textContent=S.name;renderStats();updatePositionUI()}
 function updatePositionUI(){let barBeats=beatsPerBar(),bar=Math.floor(S.playhead/barBeats)+1,within=S.playhead%barBeats,beat=Math.floor(within)+1,tick=Math.floor((within%1)*960);$("position").textContent=bar+":"+beat+":"+String(tick).padStart(3,"0");$("seek").max=maxBeat();$("seek").value=Math.min(S.playhead,maxBeat())}
 function seek(v){S.playhead=Math.max(0,Math.min(maxBeat(),+v||0));if(S.playing){Tone.Transport.seconds=S.playhead*60/S.bpm}updatePositionUI();piano()}
