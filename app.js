@@ -35,7 +35,68 @@ function exportMidi(onlyTrack=false){let m=new Midi();m.header.setTempo(S.bpm);m
 function save(){download(new Blob([JSON.stringify(projectData(),null,2)],{type:"application/json"}),"midistudio-project.json");try{localStorage.setItem("midistudio-autosave",JSON.stringify(projectData()))}catch{}toast("Project saved")}
 function applyProject(p){if(p.format!=="MidiStudio"||!Array.isArray(p.tracks))throw Error("Not a MidiStudio project");S.name=p.name||"Imported project";S.bpm=p.bpm||120;S.bars=p.bars||4;S.numerator=p.numerator||4;S.denominator=p.denominator||4;S.key=p.key||"C";S.clef=p.clef||"auto";S.tracks=p.tracks.map((t,i)=>({...t,id:t.id||uid(),notes:(t.notes||[]).map(n=>({...n,id:n.id||uid(),velocity:n.velocity||90})),instrument:t.instrument||"piano",muted:!!t.muted}));S.active=0;S.selected=null;S.playhead=0;render();scheduleAutosave()}
 function loadProject(f){let r=new FileReader();r.onload=()=>{try{applyProject(JSON.parse(r.result));toast("Project loaded")}catch(e){toast("Invalid project file")}};r.readAsText(f)}
-async function importMidi(f){try{let m=new Midi(await f.arrayBuffer()),tempo=m.header.tempos[0]?.bpm||120,ts=m.header.timeSignatures[0]?.timeSignature||[4,4];snapshot();S.bpm=Math.round(tempo);S.numerator=ts[0]||4;S.denominator=ts[1]||4;S.tracks=m.tracks.map((t,i)=>({id:uid(),name:t.name||"Track "+(i+1),muted:false,instrument:"piano",program:t.instrument?.number||0,notes:t.notes.map(n=>({id:uid(),midi:n.midi,time:n.time*tempo/60,duration:n.duration*tempo/60,velocity:Math.round(n.velocity*127)}))}));if(!S.tracks.length)S.tracks=[{id:uid(),name:"Track 1",notes:[],instrument:"piano",muted:false,program:0}];S.active=Math.max(0,S.tracks.findIndex(t=>t.notes.length>0));S.selected=null;S.name=f.name;S.bars=Math.max(4,Math.ceil(maxBeat()/beatsPerBar()));S.playhead=0;render();changed();toast("Imported "+f.name)}catch(e){console.error(e);toast("Could not read this MIDI file")}}
+function midiVarLen(bytes,pos){let value=0,b,count=0;do{if(pos>=bytes.length||count++>=4)throw Error("Invalid MIDI variable-length value");b=bytes[pos++];value=(value<<7)|(b&127)}while(b&128);return{value,pos}}
+function writeMidiVarLen(value){value=Math.max(0,Math.floor(value));let out=[value&127];while((value>>=7)>0)out.unshift((value&127)|128);return out}
+function sanitizeMidiBuffer(buffer){
+ const src=new Uint8Array(buffer),out=Array.from(src.slice(0,14));
+ if(src.length<14||String.fromCharCode(...src.slice(0,4))!=="MThd")throw Error("Invalid MIDI header");
+ const headerLength=((src[4]<<24)|(src[5]<<16)|(src[6]<<8)|src[7])>>>0;
+ let pos=8+headerLength;
+ while(pos+8<=src.length){
+  const tag=String.fromCharCode(...src.slice(pos,pos+4)),len=((src[pos+4]<<24)|(src[pos+5]<<16)|(src[pos+6]<<8)|src[pos+7])>>>0;
+  if(pos+8+len>src.length)throw Error("Truncated MIDI chunk");
+  if(tag!=="MTrk"){out.push(...src.slice(pos,pos+8+len));pos+=8+len;continue}
+  const bytes=src.slice(pos+8,pos+8+len),track=[],read=idx=>midiVarLen(bytes,idx),writeEvent=(delta,event)=>track.push(...writeMidiVarLen(delta),...event);
+  let i=0,running=0,pending=0;
+  while(i<bytes.length){
+   const d=read(i);i=d.pos;const delta=d.value+pending;pending=0;
+   let status=bytes[i],explicit=status>=128;
+   if(explicit){i++;if(status<240)running=status}else{if(!running)throw Error("Invalid running status");status=running}
+   let event=[];
+   if(status===255){
+    if(i>=bytes.length)throw Error("Truncated MIDI meta event");
+    const type=bytes[i++],vl=read(i);i=vl.pos;
+    if(i+vl.value>bytes.length)throw Error("Truncated MIDI meta payload");
+    let payload=Array.from(bytes.slice(i,i+vl.value));i+=vl.value;
+    if(type===0x59){pending=delta;continue}
+    if(type===0x03)payload=payload.filter(v=>v!==0);
+    event=[255,type,...writeMidiVarLen(payload.length),...payload];
+   }else if(status===240||status===247){
+    const vl=read(i);i=vl.pos;if(i+vl.value>bytes.length)throw Error("Truncated MIDI system-exclusive event");
+    event=[status,...writeMidiVarLen(vl.value),...bytes.slice(i,i+vl.value)];i+=vl.value;
+   }else{
+    const kind=status&240,count=(kind===192||kind===208)?1:2;
+    if(i+count>bytes.length)throw Error("Truncated MIDI channel event");
+    event=[...(explicit?[status]:[]),...bytes.slice(i,i+count)];i+=count;
+   }
+   writeEvent(delta,event);
+  }
+  if(pending)track.push(...writeMidiVarLen(pending),255,47,0);
+  const n=track.length;out.push(77,84,114,107,(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255,...track);
+  pos+=8+len;
+ }
+ return new Uint8Array(out).buffer;
+}
+async function importMidi(f){
+ try{
+  const buffer=await f.arrayBuffer();let m,usedSanitizer=false;
+  try{m=new Midi(buffer)}catch(firstError){console.warn("Standard MIDI parsing failed; retrying after metadata normalization:",firstError);m=new Midi(sanitizeMidiBuffer(buffer));usedSanitizer=true}
+  const rawTempo=m.header.tempos[0]?.bpm||120,tempo=Number.isFinite(rawTempo)&&rawTempo>0?rawTempo:120;
+  const rawTs=m.header.timeSignatures[0]?.timeSignature||[4,4],ts=Array.isArray(rawTs)&&rawTs.length===2?rawTs:[4,4];
+  const tracks=m.tracks.map((t,i)=>({
+   id:uid(),name:(t.name||"Track "+(i+1)).replace(/\0/g,"").trim()||"Track "+(i+1),
+   muted:false,instrument:"piano",program:Number.isFinite(t.instrument?.number)?t.instrument.number:0,
+   notes:t.notes.map(n=>({id:uid(),midi:Math.max(0,Math.min(127,Math.round(n.midi))),time:Math.max(0,n.time*tempo/60),duration:Math.max(.0625,n.duration*tempo/60),velocity:Math.max(1,Math.min(127,Math.round((n.velocity||.7)*127)))}))
+  }));
+  if(!tracks.length)tracks.push({id:uid(),name:"Track 1",notes:[],instrument:"piano",muted:false,program:0});
+  snapshot();S.bpm=Math.round(tempo);S.numerator=Math.max(1,Math.min(32,Number(ts[0])||4));S.denominator=[1,2,4,8,16,32].includes(Number(ts[1]))?Number(ts[1]):4;
+  S.tracks=tracks;S.active=Math.max(0,S.tracks.findIndex(t=>t.notes.length>0));S.selected=null;S.name=f.name;S.playhead=0;S.bars=Math.max(4,Math.ceil(maxBeat()/beatsPerBar()));
+  render();changed();toast("Imported "+f.name+(usedSanitizer?" (metadata normalized)":""));
+ }catch(e){
+  console.error("MIDI import failed:",e);
+  toast("MIDI import failed: "+(e?.message||String(e)));
+ }
+}
 function instrumentSynth(kind){if(kind==="piano")return new Tone.Sampler({urls:{A0:"A0.mp3",C1:"C1.mp3", "D#1":"Ds1.mp3","F#1":"Fs1.mp3",A1:"A1.mp3",C2:"C2.mp3","D#2":"Ds2.mp3","F#2":"Fs2.mp3",A2:"A2.mp3",C3:"C3.mp3","D#3":"Ds3.mp3","F#3":"Fs3.mp3",A3:"A3.mp3",C4:"C4.mp3","D#4":"Ds4.mp3","F#4":"Fs4.mp3",A4:"A4.mp3",C5:"C5.mp3","D#5":"Ds5.mp3","F#5":"Fs5.mp3",A5:"A5.mp3",C6:"C6.mp3","D#6":"Ds6.mp3","F#6":"Fs6.mp3",A6:"A6.mp3",C7:"C7.mp3","D#7":"Ds7.mp3","F#7":"Fs7.mp3",C8:"C8.mp3"},release:1,baseUrl:"https://tonejs.github.io/audio/salamander/"}).toDestination();let type={electric:"sine",organ:"square",strings:"sawtooth",brass:"sawtooth",bass:"triangle",pluck:"triangle",pad:"sine"}[kind]||"triangle";let env={piano:{attack:.005,decay:.25,sustain:.18,release:1},electric:{attack:.01,decay:.5,sustain:.3,release:1},organ:{attack:.02,decay:.1,sustain:.9,release:.15},strings:{attack:.25,decay:.4,sustain:.7,release:1.5},brass:{attack:.08,decay:.2,sustain:.65,release:.3},bass:{attack:.01,decay:.2,sustain:.6,release:.25},pluck:{attack:.003,decay:.3,sustain:.05,release:.3},pad:{attack:.5,decay:.3,sustain:.8,release:2}}[kind]||{};return new Tone.PolySynth(Tone.Synth,{oscillator:{type},envelope:env}).toDestination()}
 async function play(){await Tone.start();if(S.playing){Tone.Transport.pause();S.playing=false;$("play").textContent="▶";$("hint").textContent="Paused";return}if(!synths.length)synths=S.tracks.map(t=>instrumentSynth(t.instrument));while(synths.length<S.tracks.length)synths.push(instrumentSynth(S.tracks[synths.length].instrument));try{await Tone.loaded()}catch(e){console.warn("Instrument samples could not be loaded",e);toast("Piano samples could not load. Check your connection.");return}Tone.Transport.stop();Tone.Transport.cancel();Tone.Transport.bpm.value=S.bpm;S.tracks.forEach((t,i)=>t.notes.forEach(n=>Tone.Transport.schedule(time=>{if(!t.muted)synths[i].triggerAttackRelease(Tone.Frequency(n.midi,"midi"),Math.max(.04,n.duration*60/S.bpm),time,(n.velocity||90)/127)},n.time*60/S.bpm)));let end=maxBeat()*60/S.bpm;Tone.Transport.scheduleOnce(()=>{S.playing=false;S.playhead=maxBeat();$("play").textContent="▶";$("hint").textContent="Playback finished";updatePositionUI();piano()},end+.05);Tone.Transport.seconds=S.playhead*60/S.bpm;Tone.Transport.start();S.playing=true;$("play").textContent="Ⅱ";$("hint").textContent="Playback running"}
 function stop(){Tone.Transport.stop();Tone.Transport.cancel();S.playing=false;S.playhead=0;$("play").textContent="▶";$("hint").textContent="Stopped";updatePositionUI();piano()}
