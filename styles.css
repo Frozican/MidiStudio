@@ -28,3 +28,10 @@
 .osmd-score svg{display:block;max-width:100%;height:auto}
 @media(max-width:850px){.sheetScroll.osmd-score{padding:6px;gap:10px}}
 @media print{@page{size:A4 portrait;margin:10mm}.sheetScroll.osmd-score{display:block!important;height:auto!important;overflow:visible!important;padding:0!important;background:#fff!important}.osmd-score>div{box-shadow:none!important;margin:0 auto!important;break-after:page;page-break-after:always}.osmd-score>div:last-child{break-after:auto;page-break-after:auto}.osmd-score svg{width:100%!important;height:auto!important}}
+
+/* Standalone professional score renderer; kept separate from the editor. */
+.sheetScroll.osmd-score{background:#343640;padding:22px;display:flex;flex-direction:column;align-items:center;gap:22px;overflow:auto;min-height:420px}
+.osmd-score>div{max-width:100%;margin:0 auto;background:#fffdf7;box-shadow:0 4px 22px #0004}
+.osmd-score svg{display:block;max-width:100%;height:auto}
+@media(max-width:850px){.sheetScroll.osmd-score{padding:6px;gap:12px}.osmd-score>div{width:100%;overflow:hidden}}
+@media print{@page{size:A4 portrait;margin:10mm}.sheetScroll.osmd-score{display:block!important;height:auto!important;overflow:visible!important;padding:0!important;background:#fff!important}.osmd-score>div{box-shadow:none!important;margin:0 auto!important;break-after:page;page-break-after:always}.osmd-score>div:last-child{break-after:auto;page-break-after:auto}.osmd-score svg{width:100%!important;height:auto!important}}
