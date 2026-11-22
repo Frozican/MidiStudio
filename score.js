@@ -1,4 +1,11 @@
-import { OpenSheetMusicDisplay } from "https://esm.sh/opensheetmusicdisplay@1.9.2";
+import * as OSMDModule from "https://esm.sh/opensheetmusicdisplay@1.9.2";
+
+const OpenSheetMusicDisplay = OSMDModule.OpenSheetMusicDisplay
+  ?? OSMDModule.default?.OpenSheetMusicDisplay
+  ?? OSMDModule.default;
+if (typeof OpenSheetMusicDisplay !== "function") {
+  throw new Error("OpenSheetMusicDisplay could not be resolved from the loaded module.");
+}
 
 const esc = value => String(value ?? "").replace(/[<>&"]/g, ch => ({
   "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"
