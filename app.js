@@ -1,6 +1,6 @@
 import * as Tone from "https://esm.sh/tone@15.1.22";
 import {Midi} from "https://esm.sh/@tonejs/midi@2.0.28";
-import {Renderer,Stave,StaveNote,Voice,Formatter,Accidental} from "https://esm.sh/vexflow@4.2.5";
+import {OpenSheetMusicDisplay} from "https://esm.sh/opensheetmusicdisplay@1.9.2";
 const $=id=>document.getElementById(id),COLORS=["#a18aff","#58c7c0","#f3a65e","#e77fae","#7da8ff","#e0c46c","#77a7ed","#dc8b72"];
 const S={name:"Untitled project",tracks:[{id:"t1",name:"Track 1",notes:[],instrument:"piano",muted:false,program:0}],active:0,selected:null,view:"piano",zoom:1,bpm:120,bars:4,numerator:4,denominator:4,key:"C",clef:"auto",playhead:0,history:[],future:[],playing:false};
 let synths=[],ticker=null,saveTimer=null,drag=null;
@@ -25,56 +25,38 @@ function spell(midi){let pc=midi%12,flat=["C","Db","D","Eb","E","F","Gb","G","Ab
 function clefFor(t){if(S.clef!=="auto")return S.clef;let avg=t.notes.length?t.notes.reduce((a,n)=>a+n.midi,0)/t.notes.length:60;return avg<59?"bass":"treble"}
 function vfDuration(beats){let vals=[[4,"w"],[3,"hd"],[2,"h"],[1.5,"qd"],[1,"q"],[.75,"8d"],[.5,"8"],[.375,"16d"],[.25,"16"],[.125,"32"]];let best=vals.reduce((a,b)=>Math.abs(b[0]-beats)<Math.abs(a[0]-beats)?b:a,vals[0]);return best[1]}
 function vfBeats(d){return({"w":4,"hd":3,"h":2,"qd":1.5,"q":1,"8d":.75,"8":.5,"16d":.375,"16":.25,"32":.125})[d.replace("r","")]||1}
-function sheet(){
- const host=$("sheet");host.replaceChildren();S.measureMap=[];if(!track())return;
- const t=track(),clef=clefFor(t),barBeats=beatsPerBar(),bars=Math.max(1,Math.ceil(maxBeat()/barBeats));
- const pageW=1122,pageH=714,margin=48,measureW=513,systemsPerPage=4,systemH=158,barsPerPage=8,pageCount=Math.ceil(bars/barsPerPage);
- try{
-  for(let page=0;page<pageCount;page++){
-   const pageHost=document.createElement("div");pageHost.className="score-page";
-   const title=document.createElement("div");title.className="score-page-title";title.textContent=S.name+" — "+t.name;
-   const meta=document.createElement("div");meta.className="score-page-meta";meta.textContent=S.bpm+" BPM     "+S.numerator+"/"+S.denominator+"     "+S.key;
-   pageHost.append(title,meta);host.append(pageHost);
-   const svgHost=document.createElement("div");svgHost.className="score-svg";pageHost.append(svgHost);
-   const renderer=new Renderer(svgHost,Renderer.Backends.SVG);renderer.resize(pageW,pageH);
-   const ctx=renderer.getContext();ctx.setFont("Arial",11);
-   for(let local=0;local<barsPerPage;local++){
-    const b=page*barsPerPage+local;if(b>=bars)break;
-    const row=Math.floor(local/2),col=local%2,x=margin+col*measureW,y=34+row*systemH;
-    const stave=new Stave(x,y,measureW-14);
-    if(col===0)stave.addClef(clef).addKeySignature(S.key).addTimeSignature(S.numerator+"/"+S.denominator);
-    stave.setContext(ctx).draw();
-    S.measureMap.push({bar:b,x,y:stave.getYForLine(0),clef,svg:svgHost.querySelector("svg"),width:measureW-14});
-    const notes=t.notes.filter(n=>Math.floor(n.time/barBeats)===b).sort((a,b)=>a.time-b.time);
-    const tickables=[];let cursor=b*barBeats;
-    for(let i=0;i<notes.length;){
-     const onset=notes[i].time;
-     if(onset>cursor+.001){const restDur=vfDuration(onset-cursor);try{tickables.push(new StaveNote({clef,keys:[clef==="bass"?"d/3":"b/4"],duration:restDur+"r"}))}catch{}}
-     const same=[];while(i<notes.length&&Math.abs(notes[i].time-onset)<.001)same.push(notes[i++]);
-     const dur=Math.max(.125,...same.map(n=>n.duration)),spells=same.map(n=>spell(n.midi));
-     try{const sn=new StaveNote({clef,keys:spells.map(s=>s.key),duration:vfDuration(dur)});
-      spells.forEach((s,j)=>{if(s.acc)sn.addAccidental(j,new Accidental(s.acc))});
-      if(same.some(n=>n.id===S.selected))sn.setStyle({fillStyle:"#7658d9",strokeStyle:"#7658d9"});
-      tickables.push(sn);
-     }catch(err){console.warn("Could not engrave note",err)}
-     cursor=onset+dur;
+function xmlEscape(v){return String(v??"").replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]))}
+function scorePitch(midi){const names=["C","C","D","D","E","F","F","G","G","A","A","B"],alters=[0,1,0,1,0,0,1,0,1,0,1,0],pc=((midi%12)+12)%12;return{step:names[pc],alter:alters[pc],octave:Math.floor(midi/12)-1}}
+function scoreType(beats){const vals=[[4,"whole",0],[3,"half",1],[2,"half",0],[1.5,"quarter",1],[1,"quarter",0],[.75,"eighth",1],[.5,"eighth",0],[.375,"16th",1],[.25,"16th",0],[.1875,"32nd",1],[.125,"32nd",0],[.0625,"64th",0]];const b=vals.reduce((a,v)=>Math.abs(a[0]-beats)<=Math.abs(v[0]-beats)?a:v);return{type:b[1],dots:b[2]}}
+function buildMusicXml(){
+ const divisions=960,barBeats=beatsPerBar(),barTicks=Math.round(barBeats*divisions),barCount=Math.max(1,Math.ceil(maxBeat()/barBeats));
+ const fifths=({"C":0,"G":1,"D":2,"A":3,"E":4,"B":5,"F#":6,"C#":7,"F":-1,"Bb":-2,"Eb":-3,"Ab":-4,"Db":-5,"Gb":-6,"Cb":-7})[S.key]??0;
+ const parts=S.tracks.filter(t=>t.notes.length||S.tracks.length===1);
+ const partList=parts.map((t,i)=>"<score-part id=\"P"+(i+1)+"\"><part-name>"+xmlEscape(t.name||("Track "+(i+1)))+"</part-name></score-part>").join("");
+ const partXml=parts.map((t,pi)=>{
+  const groups=new Map();t.notes.forEach(n=>{const start=Math.max(0,Math.round(n.time*divisions)),duration=Math.max(1,Math.round(n.duration*divisions)),key=start+":"+duration;if(!groups.has(key))groups.set(key,{start,end:start+duration,duration,notes:[]});groups.get(key).notes.push(n)});
+  const events=[...groups.values()].sort((a,b)=>a.start-b.start),lanes=[];
+  events.forEach(ev=>{let lane=lanes.findIndex(end=>end<=ev.start);if(lane<0)lane=lanes.length;lanes[lane]=ev.end;ev.voice=lane+1});
+  let measures="";
+  for(let bar=0;bar<barCount;bar++){let body="";
+   if(bar===0)body+="<attributes><divisions>"+divisions+"</divisions><key><fifths>"+fifths+"</fifths></key><time><beats>"+S.numerator+"</beats><beat-type>"+S.denominator+"</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>";
+   for(let lane=1;lane<=lanes.length;lane++){const from=bar*barTicks,to=from+barTicks,laneEvents=events.filter(e=>e.voice===lane&&e.start<to&&e.end>from);let cursor=from;
+    for(const ev of laneEvents){const segStart=Math.max(from,ev.start),segEnd=Math.min(to,ev.end);
+     if(segStart>cursor){const rest=segStart-cursor;body+="<note><rest/><duration>"+rest+"</duration><voice>"+lane+"</voice><type>"+scoreType(rest/divisions).type+"</type></note>"}
+     const dur=segEnd-segStart,before=ev.start<from,after=ev.end>to;
+     ev.notes.forEach((n,ni)=>{const p=scorePitch(n.midi),typ=scoreType(dur/divisions);body+="<note>"+(ni?"<chord/>":"")+"<pitch><step>"+p.step+"</step>"+(p.alter?"<alter>"+p.alter+"</alter>":"")+"<octave>"+p.octave+"</octave></pitch><duration>"+dur+"</duration><voice>"+lane+"</voice><type>"+typ.type+"</type>"+("<dot/>".repeat(typ.dots))+(before?'<tie type="stop"/>':"")+(after?'<tie type="start"/>':"")+"<staff>1</staff>"+((before||after)?("<notations>"+(before?'<tied type="stop"/>':"")+(after?'<tied type="start"/>':"")+"</notations>"):"")+"</note>"});
+     cursor=Math.max(cursor,segEnd);
     }
-    if(cursor<(b+1)*barBeats-.02){const restDur=vfDuration((b+1)*barBeats-cursor);try{tickables.push(new StaveNote({clef,keys:[clef==="bass"?"d/3":"b/4"],duration:restDur+"r"}))}catch{}}
-    try{const voice=new Voice({num_beats:S.numerator,beat_value:S.denominator}).setStrict(false);voice.addTickables(tickables);new Formatter().joinVoices([voice]).format([voice],measureW-135);voice.draw(ctx,stave);try{Beam.generateBeams(tickables).forEach(beam=>beam.setContext(ctx).draw())}catch{}}
-    catch(err){console.warn("Notation layout",err)}
+    if(cursor<to){const rest=to-cursor;body+="<note><rest/><duration>"+rest+"</duration><voice>"+lane+"</voice><type>"+scoreType(rest/divisions).type+"</type></note>"}
    }
-   const footer=document.createElement("div");footer.className="score-page-footer";footer.textContent="MidiStudio  ·  "+(page+1)+" / "+pageCount;pageHost.append(footer);
+   measures+="<measure number=\""+(bar+1)+"\">"+body+"</measure>";
   }
- }catch(err){console.error("Score engraving failed",err);host.textContent="The score could not be engraved. Please reload the page."}
- host.onclick=e=>{
-  const svg=e.target.closest("svg");if(!svg)return;const r=svg.getBoundingClientRect(),vb=svg.viewBox?.baseVal,width=vb?.width||1122,height=vb?.height||714;
-  const px=(e.clientX-r.left)*width/r.width,py=(e.clientY-r.top)*height/r.height,map=S.measureMap.find(m=>m.svg===svg&&px>=m.x&&px<m.x+m.width&&py>=m.y-10&&py<m.y+75);if(!map)return;
-  const existing=t.notes.filter(n=>Math.floor(n.time/barBeats)===map.bar).map(n=>({n,x:map.x+90+(n.time%barBeats)/barBeats*(map.width-125)})).sort((a,b)=>Math.abs(a.x-px)-Math.abs(b.x-px))[0];
-  if(existing&&Math.abs(existing.x-px)<17){S.selected=existing.n.id;renderInspector();return}
-  const beat=Math.max(0,Math.min(barBeats-.0625,Math.round(((px-(map.x+90))/(map.width-125)*barBeats)*4)/4)),step=Math.round((map.y+35-py)/5),base=map.clef==="bass"?26:38,abs=base+step,oct=Math.floor(abs/7),letter=(abs%7+7)%7,midi=(oct+1)*12+[0,2,4,5,7,9,11][letter];
-  snapshot();const n=addNote(t,map.bar*barBeats+beat,midi);S.selected=n.id;render();changed();
- };
+  return "<part id=\"P"+(pi+1)+"\">"+measures+"</part>";
+ }).join("");
+ return '<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>'+xmlEscape(S.name)+'</work-title></work><identification><encoding><software>MidiStudio</software></encoding></identification><part-list>'+partList+'</part-list>'+partXml+'</score-partwise>';
 }
+let scoreDisplay=null,scoreRenderToken=0;
+async function sheet(){const host=$("sheet"),token=++scoreRenderToken;host.replaceChildren();S.measureMap=[];if(!S.tracks.some(t=>t.notes.length)){host.textContent="Add or import notes to create a score.";return}host.classList.add("osmd-score");try{scoreDisplay=new OpenSheetMusicDisplay(host,{backend:"svg",autoResize:true,drawTitle:true,drawSubtitle:false,drawComposer:false,drawPartNames:true,drawMeasureNumbers:true,drawCredits:false,pageFormat:"A4_P",defaultColorMusic:"#171717",defaultColorLabel:"#171717",spacingFactor:1.35,compactMode:false});await scoreDisplay.load(buildMusicXml());if(token!==scoreRenderToken)return;scoreDisplay.render()}catch(err){console.error("MusicXML engraving failed:",err);if(token===scoreRenderToken)host.textContent="Could not engrave this score: "+(err?.message||String(err))}}
 function render(){if(!S.tracks.length)S.tracks=[{id:uid(),name:"Track 1",notes:[],instrument:"piano",muted:false,program:0}];renderTracks();piano();sheet();renderInspector();historyButtons();$("bpm").value=S.bpm;$("timeSig").value=S.numerator+"/"+S.denominator;$("keySig").value=S.key;$("clef").value=S.clef;$("instrument").value=track().instrument||"piano";$("zoom").textContent=Math.round(S.zoom*100)+"%";$("pianoPane").hidden=S.view!=="piano";$("sheetPane").hidden=S.view!=="sheet";document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.view===S.view));$("projectName").textContent=S.name;renderStats();updatePositionUI()}
 function updatePositionUI(){let barBeats=beatsPerBar(),bar=Math.floor(S.playhead/barBeats)+1,within=S.playhead%barBeats,beat=Math.floor(within)+1,tick=Math.floor((within%1)*960);$("position").textContent=bar+":"+beat+":"+String(tick).padStart(3,"0");$("seek").max=maxBeat();$("seek").value=Math.min(S.playhead,maxBeat())}
 function seek(v){S.playhead=Math.max(0,Math.min(maxBeat(),+v||0));if(S.playing){Tone.Transport.seconds=S.playhead*60/S.bpm}updatePositionUI();piano()}
