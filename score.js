@@ -99,7 +99,7 @@ export function buildMusicXml(state){
  const ticksPerMeasure=Math.max(1,Math.round(beatsPerMeasure*960));
  const lastBeat=Math.max(0,...tracks.flatMap(t=>t.notes.map(n=>Number(n.time||0)+Math.max(.0625,Number(n.duration||.25)))));
  const measureCount=Math.max(1,Math.ceil(lastBeat/beatsPerMeasure));
- const partList=tracks.map((t,i)=>'<score-part id="P'+(i+1)+'"><part-name>'+esc(t.name||("Track "+(i+1)))+'</part-name>'+(isGrandStaff(t)?'<part-symbol>brace</part-symbol>':'')+'</score-part>').join("");
+ const partList=tracks.map((t,i)=>'<score-part id="P'+(i+1)+'"><part-name>'+esc(t.name||("Track "+(i+1)))+'</part-name></score-part>').join("");
  const parts=tracks.map((t,i)=>makePart(t,i,state,measureCount,ticksPerMeasure)).join("");
  return '<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>'+esc(state.name||"MidiStudio Score")+'</work-title></work><identification><encoding><software>MidiStudio</software></encoding></identification><part-list>'+partList+'</part-list>'+parts+'</score-partwise>';
 }
