@@ -1,9 +1,114 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101116"><title>MidiStudio</title><link rel="stylesheet" href="styles.css"></head><body>
-<header><a class="brand" href="./">♫ Midi<span>Studio</span></a><span id="projectName">Untitled project</span><nav><button id="open">Open MIDI</button><button id="save">Save project</button><button id="exportMidi">Export MIDI</button><button class="primary" id="exportPdf">Export PDF</button><input id="file" type="file" accept=".mid,.midi" hidden><input id="projectFile" type="file" accept=".json" hidden></nav></header>
-<main><section class="transport"><button id="stop">■</button><button id="play" class="primary">▶</button><label>POSITION <b id="position">1:1</b></label><label>TEMPO <input id="bpm" type="number" min="30" max="300" value="120"> BPM</label><span id="hint">Import a MIDI file or draw notes to get started.</span></section>
-<div class="layout"><aside><div class="heading">TRACKS <button id="addTrack">＋</button></div><div id="tracks"></div><hr><div class="heading">NOTE TOOLS</div><label>Default length<select id="length"><option value="1">Quarter note</option><option value=".5">Eighth note</option><option value=".25">Sixteenth note</option><option value="2">Half note</option><option value="4">Whole note</option></select></label><label>Velocity <span id="velVal">90</span><input id="velocity" type="range" min="1" max="127" value="90"></label><hr><div class="heading">SELECTED NOTE</div><p id="empty">Select a note in either editor to edit it.</p><div id="inspector" hidden><label>Pitch (MIDI)<input id="pitch" type="number" min="0" max="127"></label><label>Start (beats)<input id="start" type="number" min="0" step=".25"></label><label>Length (beats)<input id="duration" type="number" min=".0625" step=".25"></label><button class="danger" id="delete">Delete note</button></div></aside>
-<section class="editor"><div class="tabs"><div><button class="tab active" data-view="piano">Piano roll</button><button class="tab" data-view="sheet">Sheet music</button></div><div><button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button><button id="zoomOut">−</button><span id="zoom">100%</span><button id="zoomIn">＋</button></div></div>
-<div class="pane" id="pianoPane"><div class="panehead">PIANO ROLL <small>Click to add · Drag to move · Drag right edge to resize</small></div><div class="scroll" id="pianoScroll"><div id="piano"></div></div></div>
-<div class="pane" id="sheetPane" hidden><div class="panehead">SHEET MUSIC <small>Click staff to add notes · Select notes to edit</small></div><div class="sheetScroll" id="sheet"></div></div>
-<div class="bottom"><span>Changes sync between both views</span><span><button id="clear">Clear track</button><button id="bars">＋ Add 4 bars</button></span></div></section></div><footer>MidiStudio · Your MIDI files stay in your browser. Nothing is uploaded.</footer></main><div id="toast"></div><script type="module" src="app.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101116">
+  <meta name="description" content="A browser-based MIDI editor and music notation studio.">
+  <title>MidiStudio</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <a class="brand" href="./">♫ Midi<span>Studio</span></a>
+  <span id="projectName">Untitled project</span>
+  <nav>
+    <button id="open">Open MIDI</button>
+    <button id="openProject">Open project</button>
+    <button id="save">Save project</button>
+    <button id="exportMidi">Export MIDI</button>
+    <button id="exportTrack">Export track</button>
+    <button class="primary" id="exportPdf">Export PDF</button>
+    <input id="file" type="file" accept=".mid,.midi" hidden>
+    <input id="projectFile" type="file" accept=".json" hidden>
+  </nav>
+</header>
+<main>
+  <section class="transport">
+    <button id="rewind" title="Return to start">⏮</button>
+    <button id="stop" title="Stop">■</button>
+    <button id="play" class="primary" title="Play / pause">▶</button>
+    <label>POSITION <b id="position">1:1:000</b></label>
+    <label>TEMPO <input id="bpm" type="number" min="30" max="300" value="120"> BPM</label>
+    <label>SEEK <input id="seek" type="range" min="0" max="16" step="0.01" value="0"></label>
+    <span id="hint">Click in the piano roll to add notes, then press Play.</span>
+  </section>
+  <div class="layout">
+    <aside>
+      <div class="heading">TRACKS <button id="addTrack" title="Add track">＋</button></div>
+      <div id="tracks"></div>
+      <div class="trackActions">
+        <button id="renameTrack">Rename</button>
+        <button id="removeTrack">Remove</button>
+      </div>
+      <hr>
+      <div class="heading">TRACK SETTINGS</div>
+      <label>Instrument
+        <select id="instrument">
+          <option value="piano">Piano</option><option value="electric">Electric piano</option>
+          <option value="organ">Organ</option><option value="strings">Strings</option>
+          <option value="brass">Brass</option><option value="bass">Bass</option>
+          <option value="pluck">Pluck</option><option value="pad">Pad</option>
+        </select>
+      </label>
+      <hr>
+      <div class="heading">MUSIC SETTINGS</div>
+      <label>Time signature
+        <select id="timeSig"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option><option>5/4</option><option>7/8</option></select>
+      </label>
+      <label>Key
+        <select id="keySig"><option>C</option><option>G</option><option>D</option><option>A</option><option>E</option><option>B</option><option>F#</option><option>F</option><option>Bb</option><option>Eb</option><option>Ab</option><option>Db</option><option>Gb</option><option>Cb</option></select>
+      </label>
+      <label>Clef
+        <select id="clef"><option value="auto">Auto</option><option value="treble">Treble</option><option value="bass">Bass</option></select>
+      </label>
+      <hr>
+      <div class="heading">NOTE TOOLS</div>
+      <label>Default length
+        <select id="length"><option value="1">Quarter note</option><option value=".5">Eighth note</option><option value=".25">Sixteenth note</option><option value="2">Half note</option><option value="4">Whole note</option></select>
+      </label>
+      <label>Velocity <span id="velVal">90</span><input id="velocity" type="range" min="1" max="127" value="90"></label>
+      <hr>
+      <div class="heading">SELECTED NOTE</div>
+      <p id="empty">Select a note in either editor to edit it.</p>
+      <div id="inspector" hidden>
+        <label>Pitch (MIDI)<input id="pitch" type="number" min="0" max="127"></label>
+        <label>Start (beats)<input id="start" type="number" min="0" step=".25"></label>
+        <label>Length (beats)<input id="duration" type="number" min=".0625" step=".25"></label>
+        <label>Velocity<input id="noteVelocity" type="number" min="1" max="127"></label>
+        <button class="danger" id="delete">Delete note</button>
+      </div>
+      <hr>
+      <div class="heading">PROJECT</div>
+      <p id="noteStats">0 notes · 1 track</p>
+      <small id="autosave">Not saved yet</small>
+    </aside>
+    <section class="editor">
+      <div class="tabs">
+        <div><button class="tab active" data-view="piano">Piano roll</button><button class="tab" data-view="sheet">Sheet music</button></div>
+        <div><button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button><button id="zoomOut">−</button><span id="zoom">100%</span><button id="zoomIn">＋</button></div>
+      </div>
+      <div class="pane" id="pianoPane">
+        <div class="panehead">PIANO ROLL <small>Click to add · Drag to move · Drag right edge to resize</small></div>
+        <div class="scroll" id="pianoScroll"><div id="piano"></div></div>
+      </div>
+      <div class="pane" id="sheetPane" hidden>
+        <div class="panehead">SHEET MUSIC <small>Click staff to add notes · Select notes to edit</small></div>
+        <div class="sheetScroll" id="sheet"></div>
+      </div>
+      <div class="bottom">
+        <span>Changes sync between both views</span>
+        <span><button id="clear">Clear track</button><button id="bars">＋ Add 4 bars</button></span>
+      </div>
+      <section class="pane keyboardPane">
+        <div class="panehead">VIRTUAL KEYBOARD <small>Tap or click keys to preview notes</small></div>
+        <div id="keyboard" class="keyboard"></div>
+      </section>
+    </section>
+  </div>
+  <footer>MidiStudio · Your MIDI files stay in your browser. Nothing is uploaded.</footer>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
