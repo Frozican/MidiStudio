@@ -31,7 +31,7 @@ function restXml(ticks,voice,staff){
  const v=nearestValue(ticks/960);
  return "<note><rest/><duration>"+ticks+"</duration><voice>"+voice+"</voice><type>"+v.type+"</type>"+"<dot/>".repeat(v.dots)+"<staff>"+staff+"</staff></note>";
 }
-function isGrandStaff(track){return track.instrument==="piano"||/piano/i.test(track.name||"");}
+function isGrandStaff(track){return track.instrument==="piano"&&track.notes.some(n=>n.midi<60)&&track.notes.some(n=>n.midi>=60);}
 function clefFor(track){
  const avg=track.notes.length?track.notes.reduce((sum,n)=>sum+n.midi,0)/track.notes.length:60;
  return avg<60?{sign:"F",line:4}:{sign:"G",line:2};
