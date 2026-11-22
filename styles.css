@@ -21,3 +21,10 @@
  .score-svg svg{width:100%!important;height:auto!important}
  .score-page-footer{bottom:2mm}
 }
+
+/* OpenSheetMusicDisplay engraving */
+.sheetScroll.osmd-score{background:#343640;padding:18px;display:flex;flex-direction:column;align-items:center;gap:18px;overflow:auto}
+.osmd-score>div{max-width:100%;margin:0 auto;background:#fffdf7;box-shadow:0 3px 18px #0004}
+.osmd-score svg{display:block;max-width:100%;height:auto}
+@media(max-width:850px){.sheetScroll.osmd-score{padding:6px;gap:10px}}
+@media print{@page{size:A4 portrait;margin:10mm}.sheetScroll.osmd-score{display:block!important;height:auto!important;overflow:visible!important;padding:0!important;background:#fff!important}.osmd-score>div{box-shadow:none!important;margin:0 auto!important;break-after:page;page-break-after:always}.osmd-score>div:last-child{break-after:auto;page-break-after:auto}.osmd-score svg{width:100%!important;height:auto!important}}
