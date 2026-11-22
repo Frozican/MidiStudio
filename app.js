@@ -38,10 +38,11 @@ function loadProject(f){let r=new FileReader();r.onload=()=>{try{applyProject(JS
 function midiVarLen(bytes,pos){let value=0,b,count=0;do{if(pos>=bytes.length||count++>=4)throw Error("Invalid MIDI variable-length value");b=bytes[pos++];value=(value<<7)|(b&127)}while(b&128);return{value,pos}}
 function writeMidiVarLen(value){value=Math.max(0,Math.floor(value));let out=[value&127];while((value>>=7)>0)out.unshift((value&127)|128);return out}
 function sanitizeMidiBuffer(buffer){
- const src=new Uint8Array(buffer),out=Array.from(src.slice(0,14));
+ const src=new Uint8Array(buffer);
  if(src.length<14||String.fromCharCode(...src.slice(0,4))!=="MThd")throw Error("Invalid MIDI header");
  const headerLength=((src[4]<<24)|(src[5]<<16)|(src[6]<<8)|src[7])>>>0;
- let pos=8+headerLength;
+ let pos=8+headerLength;if(pos>src.length)throw Error("Truncated MIDI header");
+ const out=Array.from(src.slice(0,pos));
  while(pos+8<=src.length){
   const tag=String.fromCharCode(...src.slice(pos,pos+4)),len=((src[pos+4]<<24)|(src[pos+5]<<16)|(src[pos+6]<<8)|src[pos+7])>>>0;
   if(pos+8+len>src.length)throw Error("Truncated MIDI chunk");
