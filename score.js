@@ -130,7 +130,6 @@ function makeNoteXml(note, ticks, voice, staff, key, tieStart, tieStop, chord) {
     xml += "<notations>";
     if (tieStop) xml += '<tied type="stop"/>';
     if (tieStart) xml += '<tied type="start"/>';
-    if (notation?.actual !== 1) xml += '<tuplet type="start"/>';
     xml += "</notations>";
   }
   return xml + "</note>";
@@ -175,7 +174,9 @@ function assignVoices(events, staffCount) {
 function makePart(name, notes, partIndex, state, measureCount, ticksPerMeasure, staffMode) {
   const grand = staffMode === "grand";
   const staffCount = grand ? 2 : 1;
-  const staffFor = staffMode === "split"
+  const staffFor = staffMode === "grand"
+    ? note => note.__staff || (note.midi < 60 ? 2 : 1)
+    : staffMode === "split"
     ? note => note.midi < 60 ? 2 : 1
     : staffMode === "upper" ? () => 1
     : staffMode === "lower" ? () => 2
@@ -261,7 +262,7 @@ export function buildMusicXml(state) {
   if (tracks.length === 2) {
     const upper = tracks[0].notes;
     const lower = tracks[1].notes;
-    const merged = [...upper, ...lower];
+    const merged = [...upper.map(note => ({ ...note, __staff: 1 })), ...lower.map(note => ({ ...note, __staff: 2 }))];
     parts = [makePart("Piano", merged, 0, state, measureCount, ticksPerMeasure, "grand")];
     partNames = '<score-part id="P1"><part-name>Piano</part-name><part-abbreviation>Pno.</part-abbreviation></score-part>';
   } else {
