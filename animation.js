@@ -8,6 +8,12 @@ function hexRgb(hex){const n=parseInt(String(hex).replace("#",""),16);return[(n>
 function mixColor(a,b,t){const x=hexRgb(a),y=hexRgb(b);return"rgb("+x.map((v,i)=>Math.round(v+(y[i]-v)*t)).join(",")+")"}
 function settings(){return{start:$("animStart").value,end:$("animEnd").value,bg:$("animBg").value,speed:+$("animSpeed").value||145,glow:$("animGlow").checked,pressed:$("animPressed").value,white:$("animWhiteKey").value,black:$("animBlackKey").value,opacity:(+$("animOpacity").value||85)/100,keyGlow:+$("animKeyGlow").value||0,noteSize:(+$("animNoteSize").value||90)/100,audioVolume:Number($("animAudioVolume").value)/100}}
 function allNotes(){if(noteCache)return noteCache;const p=getProject();noteCache=p.tracks.flatMap((track,ti)=>track.muted?[]:track.notes.map(n=>({...n,trackIndex:ti}))).sort((a,b)=>a.time-b.time||a.midi-b.midi);noteCache.forEach((n,i)=>n.gradientIndex=i);return noteCache}
+function animationTiming(){
+ const notes=allNotes(),bpm=Math.max(1,getProject().bpm||120),first=notes.length?notes[0].time*60/bpm:0;
+ const lastEnd=notes.reduce((end,n)=>Math.max(end,(n.time+n.duration)*60/bpm),first);
+ const leadIn=Math.max(.1,(KEY_Y-90)/Math.max(30,settings().speed));
+ return{origin:first-leadIn,total:leadIn+Math.max(0,lastEnd-first)+1.2};
+}
 function colorFor(note,notes,s){const i=note.gradientIndex||0,t=notes.length<2?0:i/(notes.length-1);return mixColor(s.start,s.end,t)}
 function isWhite(midi){return !BLACK.has(midi%12)}
 function whiteKeysBefore(midi){let count=0;for(let m=LOW;m<midi;m++)if(isWhite(m))count++;return count}
@@ -51,7 +57,7 @@ function drawKeyboard(c,s,notes,songTime){
  }
 }
 function drawFrame(elapsedSeconds){
- const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),songTime=elapsedSeconds-3.6,travel=s.speed,hitY=KEY_Y;
+ const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),songTime=elapsedSeconds+animationTiming().origin,travel=s.speed,hitY=KEY_Y;
 
  const grad=ctx.createLinearGradient(0,0,WIDTH,HEIGHT);grad.addColorStop(0,s.bg);grad.addColorStop(1,"#11131d");ctx.fillStyle=grad;ctx.fillRect(0,0,WIDTH,HEIGHT);
  ctx.save();ctx.globalAlpha=.16;for(let i=0;i<70;i++){const x=(i*197)%WIDTH,y=(i*113)%KEY_Y;ctx.fillStyle="#b9b0ff";ctx.fillRect(x,y,2,2)}ctx.restore();
@@ -68,7 +74,7 @@ function drawFrame(elapsedSeconds){
  drawKeyboard(ctx,s,notes,songTime);
 
 }
-function frame(now){if(!active&&!recording){raf=0;return}if(previewing&&!recording){elapsed=(now-startedAt)/1000;const total=3.6+getDuration()+1.2;if(elapsed>=total){elapsed=total;previewing=false;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Preview finished"}}
+function frame(now){if(!active&&!recording){raf=0;return}if(previewing&&!recording){elapsed=(now-startedAt)/1000;const total=animationTiming().total;if(elapsed>=total){elapsed=total;previewing=false;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Preview finished"}}
  drawFrame(elapsed);if(previewing||recording||active)raf=requestAnimationFrame(frame);else raf=0}
 function refresh(){noteCache=null;if(canvas&&active&&!previewing&&!recording)drawFrame(elapsed)}
 function setActive(value){active=value;if(active){if(!raf)raf=requestAnimationFrame(frame)}else if(!previewing&&!recording&&raf){cancelAnimationFrame(raf);raf=0}}
@@ -102,7 +108,7 @@ async function exportVideo(){
  if(recording)return;
  if(!canvas.captureStream||!window.MediaRecorder){toast("Video recording is not supported in this browser");return}
  const formats=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"];
- const total=3.6+getDuration()+1.2;if(total>900){toast("This animation is too long to export in one video");return}
+ const timing=animationTiming(),total=timing.total;if(total>900){toast("This animation is too long to export in one video");return}
  previewing=false;recording=true;elapsed=0;active=false;if(raf){cancelAnimationFrame(raf);raf=0}$("animPlay").textContent="▶ Preview";$("animExport").disabled=true;$("animStatus").textContent="Loading piano sound…";
  let audioPack;try{audioPack=await createExportAudioStream()}catch(e){console.error(e);recording=false;$("animExport").disabled=false;$("animStatus").textContent="Audio could not be loaded";toast("Could not load piano audio. Check your connection and try again.");return}
  const videoStream=canvas.captureStream(60),tracks=[...videoStream.getVideoTracks(),...audioPack.destination.stream.getAudioTracks()],stream=new MediaStream(tracks),chunks=[];let recorder=null,mime=null;
@@ -125,7 +131,7 @@ async function exportVideo(){
   exportStarted=true;clearTimeout(startWatchdog);
   recordWallStart=performance.now();
   const recordAudioStart=rawContext.currentTime;
-  scheduleExportNotes(audioPack,recordAudioStart+3.6);
+  scheduleExportNotes(audioPack,recordAudioStart-timing.origin);
   $("animStatus").textContent="Rendering video · 0%";
   requestAnimationFrame(exportFrame);
  };
