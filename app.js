@@ -1,5 +1,10 @@
 import * as Tone from "https://esm.sh/tone@15.1.22";
 import {Midi} from "https://esm.sh/@tonejs/midi@2.0.28";
+import {preloadVerovio, renderScore} from "./score.js";
+
+// Start downloading and initializing the notation engine immediately.
+// It runs in parallel with the editor startup and is reused by Sheet Music.
+preloadVerovio().catch(error => console.warn("Verovio preloading failed; it will retry when Sheet Music is opened:", error));
 const $=id=>document.getElementById(id),COLORS=["#a18aff","#58c7c0","#f3a65e","#e77fae","#7da8ff","#e0c46c","#77a7ed","#dc8b72"];
 const S={name:"Untitled project",tracks:[{id:"t1",name:"Track 1",notes:[],instrument:"piano",muted:false,program:0}],active:0,selected:null,view:"piano",zoom:1,bpm:120,bars:4,numerator:4,denominator:4,key:"C",clef:"auto",playhead:0,history:[],future:[],playing:false};
 let synths=[],ticker=null,saveTimer=null,drag=null;
@@ -26,7 +31,6 @@ async function sheet(){
  host.classList.add("osmd-score");
  host.textContent="Preparing A4 score…";
  try{
-  const {renderScore}=await import("./score.js");
   if(token!==scoreRenderId||S.view!=="sheet")return;
   await renderScore(S,host);
   if(token!==scoreRenderId)return;
