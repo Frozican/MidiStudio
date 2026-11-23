@@ -12,7 +12,7 @@ function animationTiming(){
  const notes=allNotes(),bpm=Math.max(1,getProject().bpm||120),first=notes.length?notes[0].time*60/bpm:0;
  const lastEnd=notes.reduce((end,n)=>Math.max(end,(n.time+n.duration)*60/bpm),first);
  const leadIn=Math.max(.1,(KEY_Y-90)/Math.max(30,settings().speed));
- return{origin:first-leadIn,total:leadIn+Math.max(0,lastEnd-first)+1.2};
+ return{first,leadIn,origin:first-leadIn,total:leadIn+Math.max(0,lastEnd-first)+1.2};
 }
 function colorFor(note,notes,s){const i=note.gradientIndex||0,t=notes.length<2?0:i/(notes.length-1);return mixColor(s.start,s.end,t)}
 function isWhite(midi){return !BLACK.has(midi%12)}
@@ -130,8 +130,10 @@ async function exportVideo(){
   if(exportStarted||recorder.state!=="recording")return;
   exportStarted=true;clearTimeout(startWatchdog);
   recordWallStart=performance.now();
-  const recordAudioStart=rawContext.currentTime;
-  scheduleExportNotes(audioPack,recordAudioStart-timing.origin);
+  // The first MIDI event is scheduled for the exact audio-clock instant
+  // at which the visual timeline reaches its first illuminated key.
+  const firstKeyAudioTime=rawContext.currentTime+timing.leadIn;
+  scheduleExportNotes(audioPack,firstKeyAudioTime-timing.first);
   $("animStatus").textContent="Rendering video · 0%";
   requestAnimationFrame(exportFrame);
  };
