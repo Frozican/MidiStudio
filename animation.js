@@ -60,7 +60,7 @@ function drawFrame(elapsedSeconds){
  // Soft horizon and hit line.
  const glow=ctx.createLinearGradient(0,hitY-100,0,hitY+5);glow.addColorStop(0,"#9b83ff00");glow.addColorStop(1,"#9b83ff35");ctx.fillStyle=glow;ctx.fillRect(0,hitY-100,WIDTH,100);
  ctx.strokeStyle="#c5b6ff";ctx.shadowColor="#a18aff";ctx.shadowBlur=14;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,hitY);ctx.lineTo(WIDTH,hitY);ctx.stroke();ctx.shadowBlur=0;
- for(const n of notes){if(n.midi<LOW||n.midi>HIGH)continue;const start=n.time*60/bpm,dur=Math.max(.045,n.duration*60/bpm),bottom=hitY-(start-songTime)*travel,top=bottom-dur*travel;if(bottom<-5||top>hitY+8)continue;const w=Math.max(3,keyW*s.noteSize),x=keyX(n.midi,keyW)+(keyW-w)/2,h=Math.max(7,bottom-top),col=colorFor(n,notes,s),alpha=.7+.3*Math.max(0,Math.min(1,(n.velocity||90)/127));ctx.globalAlpha=alpha*s.opacity;
+ for(const n of notes){if(n.midi<LOW||n.midi>HIGH)continue;const start=n.time*60/bpm,dur=Math.max(.045,n.duration*60/bpm),bottom=hitY-(start-songTime)*travel,top=bottom-dur*travel;if(bottom<-5||top>hitY+8)continue;const baseKeyW=isWhite(n.midi)?keyW:keyW*.62,w=Math.max(3,baseKeyW*s.noteSize),x=keyX(n.midi,keyW)+(baseKeyW-w)/2,h=Math.max(7,bottom-top),col=colorFor(n,notes,s),alpha=.7+.3*Math.max(0,Math.min(1,(n.velocity||90)/127));ctx.globalAlpha=alpha*s.opacity;
   if(s.glow){ctx.shadowColor=col;ctx.shadowBlur=18}
   const g=ctx.createLinearGradient(x,top,x+w,bottom);g.addColorStop(0,col);g.addColorStop(1,mixColor(col,s.end,.22));ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(x,top,w,h,Math.min(7,w/3));ctx.fill();ctx.shadowBlur=0;
   ctx.globalAlpha=.8;ctx.fillStyle="#ffffff";ctx.fillRect(x+2,top+2,Math.max(1,w*.12),Math.max(2,h-4));ctx.globalAlpha=1;
