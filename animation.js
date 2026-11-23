@@ -82,7 +82,7 @@ function drawFrame(elapsedSeconds){
 function frame(now){if(!active&&!recording){raf=0;return}if(previewing&&!recording){elapsed=(now-startedAt)/1000;const total=animationTiming().total;if(elapsed>=total){elapsed=total;previewing=false;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Preview finished"}}
  drawFrame(elapsed);if(previewing||recording||active)raf=requestAnimationFrame(frame);else raf=0}
 function refresh(){noteCache=null;renderTimeline=null;if(canvas&&active&&!previewing&&!recording)drawFrame(elapsed)}
-function setActive(value){active=value;if(active){if(!raf)raf=requestAnimationFrame(frame)}else if(!previewing&&!recording&&raf){cancelAnimationFrame(raf);raf=0}}
+function setActive(value){active=value;if(active){noteCache=null;renderTimeline=null;if(!raf)raf=requestAnimationFrame(frame)}else if(!previewing&&!recording&&raf){cancelAnimationFrame(raf);raf=0}}
 function startPreview(){if(previewing){elapsed=(performance.now()-startedAt)/1000;previewing=false;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Preview paused";return}elapsed=0;startedAt=performance.now();previewing=true;$("animPlay").textContent="Ⅱ Pause";$("animStatus").textContent="Playing preview";setActive(true)}
 async function createExportAudioStream(){
  await Tone.start();
