@@ -6,7 +6,7 @@ let getProject,getDuration,toast,active=false,previewing=false,recording=false,e
 
 function hexRgb(hex){const n=parseInt(String(hex).replace("#",""),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 function mixColor(a,b,t){const x=hexRgb(a),y=hexRgb(b);return"rgb("+x.map((v,i)=>Math.round(v+(y[i]-v)*t)).join(",")+")"}
-function settings(){return{start:$("animStart").value,end:$("animEnd").value,bg:$("animBg").value,speed:+$("animSpeed").value||145,glow:$("animGlow").checked,pressed:$("animPressed").value,white:$("animWhiteKey").value,black:$("animBlackKey").value,opacity:(+$("animOpacity").value||85)/100,keyGlow:+$("animKeyGlow").value||0,noteSize:(+$("animNoteSize").value||90)/100,audioVolume:(+$("animAudioVolume").value||80)/100}}
+function settings(){return{start:$("animStart").value,end:$("animEnd").value,bg:$("animBg").value,speed:+$("animSpeed").value||145,glow:$("animGlow").checked,pressed:$("animPressed").value,white:$("animWhiteKey").value,black:$("animBlackKey").value,opacity:(+$("animOpacity").value||85)/100,keyGlow:+$("animKeyGlow").value||0,noteSize:(+$("animNoteSize").value||90)/100,audioVolume:Number($("animAudioVolume").value)/100}}
 function allNotes(){const p=getProject();return p.tracks.flatMap((track,ti)=>track.muted?[]:track.notes.map(n=>({...n,trackIndex:ti}))).sort((a,b)=>a.time-b.time||a.midi-b.midi)}
 function colorFor(note,notes,s){const i=notes.indexOf(note),t=notes.length<2?0:i/(notes.length-1);return mixColor(s.start,s.end,t)}
 function keyX(midi,keyW){return(midi-LOW)*keyW}
@@ -51,7 +51,7 @@ async function createExportAudioStream(){
  const output=new Tone.Gain(settings().audioVolume).toDestination();
  output.connect(destination);
  const piano=new Tone.Sampler({
-  urls:{A0:"A0.mp3",C1:"C1.mp3","D#1":"Ds1.mp3","F#1":"Fs1.mp3",A1:"A1.mp3",C2:"C2.mp3","D#2":"Ds2.mp3","F#2":"Fs2.mp3",A2:"A2.mp3",C3:"C3.mp3","D#3":"Ds3.mp3","F#3":"Fs3.mp3",A3:"A3.mp3",C4:"C4.mp3","D#4":"Ds4.mp3","F#4":"Fs4.mp3",A4:"A4.mp3",C5:"C5.mp3","D#5":"Ds5.mp3","F#5":"Fs5.mp3",A5:"A5.mp3",C6:"C6.mp3","D#6":"Ds6.mp3","F#6":"Fs6.mp3",A6:"A6.mp3","D#7":"Ds7.mp3","F#7":"Fs7.mp3",C8:"C8.mp3"},
+  urls:{A0:"A0.mp3",C1:"C1.mp3","D#1":"Ds1.mp3","F#1":"Fs1.mp3",A1:"A1.mp3",C2:"C2.mp3","D#2":"Ds2.mp3","F#2":"Fs2.mp3",A2:"A2.mp3",C3:"C3.mp3","D#3":"Ds3.mp3","F#3":"Fs3.mp3",A3:"A3.mp3",C4:"C4.mp3","D#4":"Ds4.mp3","F#4":"Fs4.mp3",A4:"A4.mp3",C5:"C5.mp3","D#5":"Ds5.mp3","F#5":"Fs5.mp3",A5:"A5.mp3",C6:"C6.mp3","D#6":"Ds6.mp3","F#6":"Fs6.mp3",A6:"A6.mp3",C7:"C7.mp3","D#7":"Ds7.mp3","F#7":"Fs7.mp3",C8:"C8.mp3"},
   release:1.8,attack:.003,volume:-1,baseUrl:"https://tonejs.github.io/audio/salamander/"
  });
  piano.connect(output);
@@ -85,6 +85,6 @@ export function initAnimation(api){
  $("animPlay").onclick=startPreview;$("animReset").onclick=()=>{previewing=false;elapsed=0;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Ready";refresh()};
  $("animExport").onclick=exportVideo;
  ["animStart","animEnd","animBg","animSpeed","animGlow","animPressed","animWhiteKey","animBlackKey","animOpacity","animKeyGlow","animNoteSize","animAudioVolume"].forEach(id=>$(id).addEventListener("input",()=>{$("animSpeedValue").textContent=$("animSpeed").value+" px/s";$("animOpacityValue").textContent=$("animOpacity").value+"%";$("animKeyGlowValue").textContent=$("animKeyGlow").value;$("animNoteSizeValue").textContent=$("animNoteSize").value+"%";$("animAudioVolumeValue").textContent=$("animAudioVolume").value+"%";$("gradientSample").style.background="linear-gradient(90deg,"+$("animStart").value+","+$("animEnd").value+")";refresh()}));
- $("animSpeedValue").textContent=$("animSpeed").value+" px/s";$("animOpacityValue").textContent=$("animOpacity").value+"%";drawFrame(0);
+ $("animSpeedValue").textContent=$("animSpeed").value+" px/s";$("animOpacityValue").textContent=$("animOpacity").value+"%";$("animKeyGlowValue").textContent=$("animKeyGlow").value;$("animNoteSizeValue").textContent=$("animNoteSize").value+"%";$("animAudioVolumeValue").textContent=$("animAudioVolume").value+"%";drawFrame(0);
  return{setActive,refresh};
 }
