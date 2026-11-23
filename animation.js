@@ -9,24 +9,36 @@ function mixColor(a,b,t){const x=hexRgb(a),y=hexRgb(b);return"rgb("+x.map((v,i)=
 function settings(){return{start:$("animStart").value,end:$("animEnd").value,bg:$("animBg").value,speed:+$("animSpeed").value||145,glow:$("animGlow").checked,pressed:$("animPressed").value,white:$("animWhiteKey").value,black:$("animBlackKey").value,opacity:(+$("animOpacity").value||85)/100,keyGlow:+$("animKeyGlow").value||0,noteSize:(+$("animNoteSize").value||90)/100,audioVolume:Number($("animAudioVolume").value)/100}}
 function allNotes(){if(noteCache)return noteCache;const p=getProject();noteCache=p.tracks.flatMap((track,ti)=>track.muted?[]:track.notes.map(n=>({...n,trackIndex:ti}))).sort((a,b)=>a.time-b.time||a.midi-b.midi);noteCache.forEach((n,i)=>n.gradientIndex=i);return noteCache}
 function colorFor(note,notes,s){const i=note.gradientIndex||0,t=notes.length<2?0:i/(notes.length-1);return mixColor(s.start,s.end,t)}
-function keyX(midi,keyW){return(midi-LOW)*keyW}
+function isWhite(midi){return !BLACK.has(midi%12)}
+function whiteKeysBefore(midi){let count=0;for(let m=LOW;m<midi;m++)if(isWhite(m))count++;return count}
+function whiteKeyCount(){let count=0;for(let m=LOW;m<=HIGH;m++)if(isWhite(m))count++;return count}
+function keyX(midi,keyW){const x=whiteKeysBefore(midi)*keyW;return isWhite(midi)?x:x-keyW*.31}
 function drawKeyboard(c,s,notes,songTime){
- const keyW=WIDTH/(HIGH-LOW+1),white=s.white,black=s.black;
+ const keyW=WIDTH/whiteKeyCount(),white=s.white,black=s.black,blackW=keyW*.62,blackH=57;
  c.fillStyle="#252735";c.fillRect(0,KEY_Y-4,WIDTH,HEIGHT-KEY_Y+4);
- for(let m=LOW;m<=HIGH;m++){
-  const x=keyX(m,keyW),isBlack=BLACK.has(m%12),w=keyW+(m===HIGH?1:0);
-  if(!isBlack){c.fillStyle=white;c.fillRect(x,KEY_Y,w,HEIGHT-KEY_Y);c.strokeStyle="#b8b9c4";c.lineWidth=1;c.strokeRect(x,KEY_Y,w,HEIGHT-KEY_Y);if(m%12===0){c.fillStyle="#333746";c.font="bold 11px sans-serif";c.fillText("C"+(Math.floor(m/12)-1),x+4,HEIGHT-13)}}
+ // White keys form the lower keyboard. Black keys overlap the gaps and are shorter.
+ for(let m=LOW;m<=HIGH;m++)if(isWhite(m)){
+  const x=keyX(m,keyW),w=keyW+.5;
+  c.fillStyle=white;c.fillRect(x,KEY_Y,w,HEIGHT-KEY_Y);
+  c.strokeStyle="#9fa2ad";c.lineWidth=1;c.strokeRect(x,KEY_Y,w,HEIGHT-KEY_Y);
+  if(m%12===0){c.fillStyle="#333746";c.font="bold 11px sans-serif";c.fillText("C"+(Math.floor(m/12)-1),x+4,HEIGHT-13)}
  }
- for(let m=LOW;m<=HIGH;m++)if(BLACK.has(m%12)){const x=keyX(m,keyW),w=keyW*.64;c.fillStyle=black;c.shadowColor="#000";c.shadowBlur=8;c.fillRect(x+(keyW-w)/2,KEY_Y,w,92);c.shadowBlur=0;c.fillStyle="#35394a";c.fillRect(x+(keyW-w)/2+3,KEY_Y+2,w-6,4)}
+ for(let m=LOW;m<=HIGH;m++)if(!isWhite(m)){
+  const x=keyX(m,keyW),y=KEY_Y,w=blackW;
+  c.save();c.shadowColor="#000";c.shadowBlur=8;c.shadowOffsetY=3;
+  c.fillStyle=black;c.beginPath();c.roundRect(x,y,w,blackH,[0,0,3,3]);c.fill();c.restore();
+  c.fillStyle="#ffffff18";c.fillRect(x+3,y+2,Math.max(1,w-6),3);
+  c.strokeStyle="#08090d";c.lineWidth=1;c.strokeRect(x,y,w,blackH);
+ }
  const lit=new Map();for(const n of notes){const bpm=Math.max(1,getProject().bpm||120),at=n.time*60/bpm,dur=Math.max(.045,n.duration*60/bpm);if(songTime>=at&&songTime<at+dur)lit.set(n.midi,colorFor(n,notes,s))}
- for(const [m,col] of lit){const x=keyX(m,keyW);c.fillStyle=s.pressed;c.shadowColor=s.pressed;c.shadowBlur=s.keyGlow;if(BLACK.has(m%12)){const w=keyW*.64;c.fillRect(x+(keyW-w)/2,KEY_Y,w,92)}else c.fillRect(x+1,KEY_Y+1,keyW-2,HEIGHT-KEY_Y-2);c.shadowBlur=0}
+ for(const [m,col] of lit){const x=keyX(m,keyW);c.fillStyle=s.pressed;c.shadowColor=s.pressed;c.shadowBlur=s.keyGlow;if(!isWhite(m)){c.beginPath();c.roundRect(x,KEY_Y,blackW,blackH,[0,0,3,3]);c.fill()}else c.fillRect(x+1,KEY_Y+1,keyW-2,HEIGHT-KEY_Y-2);c.shadowBlur=0}
 }
 function drawFrame(elapsedSeconds){
  const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),songTime=elapsedSeconds-3.6,travel=s.speed,hitY=KEY_Y;
 
  const grad=ctx.createLinearGradient(0,0,WIDTH,HEIGHT);grad.addColorStop(0,s.bg);grad.addColorStop(1,"#11131d");ctx.fillStyle=grad;ctx.fillRect(0,0,WIDTH,HEIGHT);
  ctx.save();ctx.globalAlpha=.16;for(let i=0;i<70;i++){const x=(i*197)%WIDTH,y=(i*113)%KEY_Y;ctx.fillStyle="#b9b0ff";ctx.fillRect(x,y,2,2)}ctx.restore();
- const keyW=WIDTH/(HIGH-LOW+1);
+ const keyW=WIDTH/whiteKeyCount();
  ctx.strokeStyle="#ffffff12";ctx.lineWidth=1;for(let m=LOW;m<=HIGH;m+=12){const x=keyX(m,keyW);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,KEY_Y);ctx.stroke()}
  // Soft horizon and hit line.
  const glow=ctx.createLinearGradient(0,hitY-100,0,hitY+5);glow.addColorStop(0,"#9b83ff00");glow.addColorStop(1,"#9b83ff35");ctx.fillStyle=glow;ctx.fillRect(0,hitY-100,WIDTH,100);
@@ -50,18 +62,21 @@ async function createExportAudioStream(){
  const destination=raw.createMediaStreamDestination();
  const output=new Tone.Gain(settings().audioVolume).toDestination();
  output.connect(destination);
+ const reverb=new Tone.Reverb({decay:3.2,wet:.24});
+ reverb.connect(output);
  const piano=new Tone.Sampler({
   urls:{A0:"A0.mp3",C1:"C1.mp3","D#1":"Ds1.mp3","F#1":"Fs1.mp3",A1:"A1.mp3",C2:"C2.mp3","D#2":"Ds2.mp3","F#2":"Fs2.mp3",A2:"A2.mp3",C3:"C3.mp3","D#3":"Ds3.mp3","F#3":"Fs3.mp3",A3:"A3.mp3",C4:"C4.mp3","D#4":"Ds4.mp3","F#4":"Fs4.mp3",A4:"A4.mp3",C5:"C5.mp3","D#5":"Ds5.mp3","F#5":"Fs5.mp3",A5:"A5.mp3",C6:"C6.mp3","D#6":"Ds6.mp3","F#6":"Fs6.mp3",A6:"A6.mp3",C7:"C7.mp3","D#7":"Ds7.mp3","F#7":"Fs7.mp3",C8:"C8.mp3"},
-  release:1.8,attack:.003,volume:-1,baseUrl:"https://tonejs.github.io/audio/salamander/"
+  release:2.2,attack:.004,volume:-2,baseUrl:"https://tonejs.github.io/audio/salamander/"
  });
- piano.connect(output);
+ piano.connect(reverb);
  await Tone.loaded();
+ await reverb.ready;
  const p=getProject(),bpm=Math.max(1,p.bpm||120),base=Tone.now()+3.6;
  for(const n of allNotes()){
   const at=base+n.time*60/bpm,duration=Math.max(.045,n.duration*60/bpm),velocity=Math.max(1,Math.min(127,n.velocity||90))/127;
   piano.triggerAttackRelease(Tone.Frequency(n.midi,"midi"),duration,at,velocity);
  }
- return{destination,piano,output};
+ return{destination,piano,output,reverb};
 }
 async function exportVideo(){
  if(recording)return;
@@ -71,7 +86,7 @@ async function exportVideo(){
  previewing=false;recording=true;elapsed=0;active=true;$("animPlay").textContent="▶ Preview";$("animExport").disabled=true;$("animStatus").textContent="Loading piano sound…";
  let audioPack;try{audioPack=await createExportAudioStream()}catch(e){console.error(e);recording=false;$("animExport").disabled=false;$("animStatus").textContent="Audio could not be loaded";toast("Could not load piano audio. Check your connection and try again.");return}
  const videoStream=canvas.captureStream(60),tracks=[...videoStream.getVideoTracks(),...audioPack.destination.stream.getAudioTracks()],stream=new MediaStream(tracks),chunks=[];let recorder;
- try{recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:12000000,audioBitsPerSecond:192000})}catch(e){stream.getTracks().forEach(t=>t.stop());audioPack.piano.dispose();audioPack.output.dispose();recording=false;$("animExport").disabled=false;toast("Could not start video export");return}
+ try{recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:12000000,audioBitsPerSecond:192000})}catch(e){stream.getTracks().forEach(t=>t.stop());audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose();recording=false;$("animExport").disabled=false;toast("Could not start video export");return}
  $("animStatus").textContent="Rendering video with piano audio…";
  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
  recorder.onerror=()=>{$("animStatus").textContent="Video export failed";toast("Video export failed")};
