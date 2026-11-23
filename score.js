@@ -1,175 +1,336 @@
-import * as OSMDModule from "https://esm.sh/opensheetmusicdisplay@1.9.2";
+const VEROVIO_URL = "https://www.verovio.org/javascript/latest/verovio-toolkit-wasm.js";
+let toolkitPromise;
 
-const OpenSheetMusicDisplay = OSMDModule.OpenSheetMusicDisplay
-  ?? OSMDModule.default?.OpenSheetMusicDisplay
-  ?? OSMDModule.default;
-if (typeof OpenSheetMusicDisplay !== "function") {
-  throw new Error("OpenSheetMusicDisplay could not be resolved from the loaded module.");
-}
-
-const esc = value => String(value ?? "").replace(/[<>&"]/g, ch => ({
-  "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"
+const escapeXml = value => String(value ?? "").replace(/[<>&"']/g, ch => ({
+  "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;"
 }[ch]));
 
-const KEY_FIFTHS = {C:0,G:1,D:2,A:3,E:4,B:5,"F#":6,"C#":7,F:-1,Bb:-2,Eb:-3,Ab:-4,Db:-5,Gb:-6,Cb:-7};
-const NOTE_VALUES = [
-  {beats:4,type:"whole",dots:0},{beats:3,type:"half",dots:1},
-  {beats:2,type:"half",dots:0},{beats:1.5,type:"quarter",dots:1},
-  {beats:1,type:"quarter",dots:0},{beats:.75,type:"eighth",dots:1},
-  {beats:.5,type:"eighth",dots:0},{beats:.375,type:"16th",dots:1},
-  {beats:.25,type:"16th",dots:0},{beats:.1875,type:"32nd",dots:1},
-  {beats:.125,type:"32nd",dots:0},{beats:.0625,type:"64th",dots:0}
+function loadVerovio() {
+  if (toolkitPromise) return toolkitPromise;
+  toolkitPromise = new Promise((resolve, reject) => {
+    const finish = () => {
+      try {
+        if (!window.verovio?.toolkit) throw new Error("Verovio toolkit did not initialize.");
+        resolve(new window.verovio.toolkit());
+      } catch (error) { reject(error); }
+    };
+    if (window.verovio?.toolkit) return finish();
+
+    let script = document.querySelector('script[data-midistudio-verovio]');
+    if (!script) {
+      script = document.createElement("script");
+      script.src = VEROVIO_URL;
+      script.async = true;
+      script.dataset.midistudioVerovio = "true";
+      document.head.appendChild(script);
+    }
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      finish();
+    };
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      toolkitPromise = null;
+      reject(new Error("Could not load Verovio. Check your internet connection and reload the score."));
+    };
+    script.addEventListener("error", fail, { once: true });
+    script.addEventListener("load", () => {
+      if (window.verovio?.toolkit) done();
+      else if (window.verovio?.module) {
+        const previous = window.verovio.module.onRuntimeInitialized;
+        window.verovio.module.onRuntimeInitialized = () => {
+          try { previous?.(); } finally { done(); }
+        };
+      } else fail();
+    }, { once: true });
+    // The script may already have loaded while its WASM runtime is starting.
+    const wait = () => {
+      if (window.verovio?.toolkit) done();
+      else if (!settled) requestAnimationFrame(wait);
+    };
+    wait();
+    setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        toolkitPromise = null;
+        reject(new Error("Verovio initialization timed out."));
+      }
+    }, 45000);
+  });
+  return toolkitPromise;
+}
+
+const FIFTHS = {
+  C: 0, G: 1, D: 2, A: 3, E: 4, B: 5, "F#": 6, "C#": 7,
+  F: -1, Bb: -2, Eb: -3, Ab: -4, Db: -5, Gb: -6, Cb: -7
+};
+
+const DURATIONS = [
+  [4, "whole"], [3, "half", 1], [2, "half"], [1.5, "quarter", 1],
+  [1, "quarter"], [.75, "eighth", 1], [.5, "eighth"],
+  [.375, "16th", 1], [.25, "16th"], [.1875, "32nd", 1],
+  [.125, "32nd"], [.09375, "64th", 1], [.0625, "64th"]
 ];
-const nearestValue = beats => NOTE_VALUES.reduce((best,item)=>
-  Math.abs(item.beats-beats)<Math.abs(best.beats-beats)?item:best,NOTE_VALUES[0]);
-function pitchInfo(midi,key){
- const flats=["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"];
- const sharps=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
- const name=([ "F","Bb","Eb","Ab","Db","Gb","Cb" ].includes(key)?flats:sharps)[((midi%12)+12)%12];
- return {step:name[0],alter:name.length>1?(name[1]==="#"?1:-1):0,octave:Math.floor(midi/12)-1};
+const TRIPLETS = [
+  [8 / 3, "half", 2, 3], [4 / 3, "quarter", 2, 3],
+  [2 / 3, "eighth", 2, 3], [1 / 3, "16th", 2, 3],
+  [1 / 6, "32nd", 2, 3]
+];
+
+function durationNotation(ticks) {
+  const beats = ticks / 960;
+  const candidates = [
+    ...DURATIONS.map(([value, type, dots = 0]) => ({ value, type, dots, actual: 1, normal: 1 })),
+    ...TRIPLETS.map(([value, type, actual, normal]) => ({ value, type, dots: 0, actual, normal }))
+  ];
+  candidates.sort((a, b) => Math.abs(a.value - beats) - Math.abs(b.value - beats));
+  const best = candidates[0];
+  return Math.abs(best.value - beats) < 0.012
+    ? best
+    : null;
 }
-function noteXml(note,ticks,voice,staff,state,tieStart,tieStop,chord){
- const p=pitchInfo(note.midi,state.key),v=nearestValue(ticks/960);
- const ties=(tieStop?'<tie type="stop"/>':"")+(tieStart?'<tie type="start"/>':"");
- const notations=ties?'<notations>'+(tieStop?'<tied type="stop"/>':"")+(tieStart?'<tied type="start"/>':"")+"</notations>":"";
- return "<note>"+(chord?"<chord/>":"")+"<pitch><step>"+p.step+"</step>"+(p.alter?"<alter>"+p.alter+"</alter>":"")+"<octave>"+p.octave+"</octave></pitch><duration>"+ticks+"</duration>"+ties+"<voice>"+voice+"</voice><type>"+v.type+"</type>"+"<dot/>".repeat(v.dots)+"<staff>"+staff+"</staff>"+notations+"</note>";
+
+function pitchFor(midi, key) {
+  const flatKeys = ["F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"];
+  const names = flatKeys.includes(key)
+    ? ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
+    : ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const name = names[((midi % 12) + 12) % 12];
+  return {
+    step: name[0],
+    alter: name.length > 1 ? (name[1] === "#" ? 1 : -1) : 0,
+    octave: Math.floor(midi / 12) - 1
+  };
 }
-function restXml(ticks,voice,staff){
- const v=nearestValue(ticks/960);
- return "<note><rest/><duration>"+ticks+"</duration><voice>"+voice+"</voice><type>"+v.type+"</type>"+"<dot/>".repeat(v.dots)+"<staff>"+staff+"</staff></note>";
-}
-function isGrandStaff(track){return track.instrument==="piano"&&track.notes.some(n=>n.midi<60)&&track.notes.some(n=>n.midi>=60);}
-function clefFor(track){
- const avg=track.notes.length?track.notes.reduce((sum,n)=>sum+n.midi,0)/track.notes.length:60;
- return avg<60?{sign:"F",line:4}:{sign:"G",line:2};
-}
-function makePart(track,index,state,measureCount,ticksPerMeasure){
- const grand=isGrandStaff(track),staffCount=grand?2:1,defaultClef=clefFor(track);
- const grouped=new Map();
- for(const note of track.notes){
-  const start=Math.max(0,Math.round(Number(note.time||0)*960));
-  const rawDuration=Math.max(1,Number(note.duration||.25)*960);
-  const duration=Math.max(60,Math.round(nearestValue(rawDuration/960).beats*960));
-  const staff=grand?(note.midi<60?2:1):1;
-  const key=start+":"+duration+":"+staff;
-  if(!grouped.has(key))grouped.set(key,{start,end:start+duration,duration,staff,notes:[]});
-  grouped.get(key).notes.push(note);
- }
- const events=[...grouped.values()].sort((a,b)=>a.start-b.start||a.staff-b.staff||a.end-b.end);
- const lanes=[[],[]],laneEnds=[[],[]];
- for(const event of events){
-  const idx=event.staff-1;
-  let lane=laneEnds[idx].findIndex(end=>end<=event.start);
-  if(lane<0)lane=laneEnds[idx].length;
-  laneEnds[idx][lane]=event.end;event.voice=lane+1;
-  if(!lanes[idx][lane])lanes[idx][lane]=[];
-  lanes[idx][lane].push(event);
- }
- const laneCounts=Array.from({length:staffCount},(_,i)=>Math.max(1,lanes[i].length));
- let measures="";
- for(let bar=0;bar<measureCount;bar++){
-  const from=bar*ticksPerMeasure,to=from+ticksPerMeasure;
-  let body="";
-  if(bar===0){
-   body+='<attributes><divisions>960</divisions><key><fifths>'+(KEY_FIFTHS[state.key]??0)+'</fifths></key><time><beats>'+state.numerator+'</beats><beat-type>'+state.denominator+'</beat-type></time>';
-   if(grand)body+='<staves>2</staves><part-symbol>brace</part-symbol><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef>';
-   else body+='<clef><sign>'+defaultClef.sign+'</sign><line>'+defaultClef.line+'</line></clef>';
-   body+="</attributes>";
-   if(index===0)body+='<direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>'+Math.max(20,Math.min(400,Math.round(state.bpm||120)))+'</per-minute></metronome></direction-type><sound tempo="'+Math.max(20,Math.min(400,Number(state.bpm)||120))+'"/></direction>';
-  }
-  let firstVoice=true;
-  for(let staff=1;staff<=staffCount;staff++){
-   const staffLanes=lanes[staff-1];
-   for(let lane=0;lane<laneCounts[staff-1];lane++){
-    if(!firstVoice)body+='<backup><duration>'+ticksPerMeasure+'</duration></backup>';
-    firstVoice=false;
-    const laneEvents=(staffLanes[lane]||[]).filter(e=>e.start<to&&e.end>from).sort((a,b)=>a.start-b.start);
-    let cursor=from;
-    for(const event of laneEvents){
-     const start=Math.max(from,event.start),end=Math.min(to,event.end);
-     if(start>cursor)body+=restXml(start-cursor,lane+1,staff);
-     const segment=end-start;
-     event.notes.forEach((note,i)=>body+=noteXml(note,segment,lane+1,staff,state,event.end>to,event.start<from,i>0));
-     cursor=Math.max(cursor,end);
+
+function makeNoteXml(note, ticks, voice, staff, key, tieStart, tieStop, chord) {
+  const pitch = pitchFor(note.midi, key);
+  const notation = durationNotation(ticks);
+  const ties = (tieStop ? '<tie type="stop"/>' : "") + (tieStart ? '<tie type="start"/>' : "");
+  let xml = "<note>";
+  if (chord) xml += "<chord/>";
+  xml += "<pitch><step>" + pitch.step + "</step>";
+  if (pitch.alter) xml += "<alter>" + pitch.alter + "</alter>";
+  xml += "<octave>" + pitch.octave + "</octave></pitch>";
+  xml += "<duration>" + ticks + "</duration>";
+  xml += ties + "<voice>" + voice + "</voice>";
+  if (notation) {
+    xml += "<type>" + notation.type + "</type>" + "<dot/>".repeat(notation.dots);
+    if (notation.actual !== 1) {
+      xml += "<time-modification><actual-notes>" + notation.actual +
+        "</actual-notes><normal-notes>" + notation.normal +
+        "</normal-notes></time-modification>";
     }
-    if(cursor<to)body+=restXml(to-cursor,lane+1,staff);
-   }
   }
-  measures+='<measure number="'+(bar+1)+'">'+body+"</measure>";
- }
- return '<part id="P'+(index+1)+'">'+measures+"</part>";
+  xml += "<staff>" + staff + "</staff>";
+  if (tieStart || tieStop) {
+    xml += "<notations>";
+    if (tieStop) xml += '<tied type="stop"/>';
+    if (tieStart) xml += '<tied type="start"/>';
+    if (notation?.actual !== 1) xml += '<tuplet type="start"/>';
+    xml += "</notations>";
+  }
+  return xml + "</note>";
 }
-export function buildMusicXml(state){
- const tracks=state.tracks.filter(t=>Array.isArray(t.notes)&&t.notes.length);
- if(!tracks.length)throw new Error("There are no notes to engrave yet.");
- const beatsPerMeasure=Number(state.numerator||4)*4/Number(state.denominator||4);
- const ticksPerMeasure=Math.max(1,Math.round(beatsPerMeasure*960));
- const lastBeat=Math.max(0,...tracks.flatMap(t=>t.notes.map(n=>Number(n.time||0)+Math.max(.0625,Number(n.duration||.25)))));
- const measureCount=Math.max(1,Math.ceil(lastBeat/beatsPerMeasure));
- const partList=tracks.map((t,i)=>'<score-part id="P'+(i+1)+'"><part-name>'+esc(t.name||("Track "+(i+1)))+'</part-name></score-part>').join("");
- const parts=tracks.map((t,i)=>makePart(t,i,state,measureCount,ticksPerMeasure)).join("");
- return '<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>'+esc(state.name||"MidiStudio Score")+'</work-title></work><identification><encoding><software>MidiStudio</software></encoding></identification><part-list>'+partList+'</part-list>'+parts+'</score-partwise>';
+
+function restXml(ticks, voice, staff) {
+  const notation = durationNotation(ticks);
+  let xml = "<note><rest/><duration>" + ticks + "</duration><voice>" + voice + "</voice>";
+  if (notation) xml += "<type>" + notation.type + "</type>" + "<dot/>".repeat(notation.dots);
+  return xml + "<staff>" + staff + "</staff></note>";
 }
-function fallbackScore(state,host){
- const tracks=state.tracks.filter(t=>Array.isArray(t.notes)&&t.notes.length);
- if(!tracks.length)throw new Error("There are no notes to engrave yet.");
- const beatsPerBar=Number(state.numerator||4)*4/Number(state.denominator||4);
- const lastBeat=Math.max(1,...tracks.flatMap(t=>t.notes.map(n=>Number(n.time||0)+Number(n.duration||.25))));
- const measureCount=Math.max(1,Math.ceil(lastBeat/beatsPerBar));
- const measuresPerPage=4, pages=[];
- const escText=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
- const staffTop=130, rowHeight=tracks.reduce((h,t)=>h+(isGrandStaff(t)?150:100),0)+28;
- for(let first=0;first<measureCount;first+=measuresPerPage){
-  const pageNo=pages.length+1, width=794,height=1123;
-  let y=staffTop,body="";
-  body+='<text x="55" y="58" font-size="24" font-family="serif" font-weight="bold">'+escText(state.name||"MidiStudio Score")+'</text>';
-  body+='<text x="55" y="86" font-size="12" font-family="sans-serif">'+escText("Tempo: "+(state.bpm||120)+" BPM · "+state.numerator+"/"+state.denominator+" · Page "+pageNo)+'</text>';
-  for(const tr of tracks){
-   const grand=isGrandStaff(tr), staffCount=grand?2:1, clef=clefFor(tr);
-   body+='<text x="55" y="'+(y-18)+'" font-size="13" font-family="sans-serif" font-weight="bold">'+escText(tr.name||"Track")+'</text>';
-   for(let st=1;st<=staffCount;st++){
-    const top=y+(st-1)*72;
-    for(let line=0;line<5;line++)body+='<line x1="75" y1="'+(top+line*10)+'" x2="744" y2="'+(top+line*10)+'" stroke="#222" stroke-width="1"/>';
-    body+='<text x="53" y="'+(top+39)+'" font-size="38" font-family="serif">'+(grand?(st===1?"𝄞":"𝄢"):(clef.sign==="G"?"𝄞":"𝄢"))+'</text>';
-   }
-   if(grand)body+='<path d="M68 '+(y+5)+' C40 '+(y+35)+',40 '+(y+105)+',68 '+(y+137)+'" fill="none" stroke="#222" stroke-width="2"/>';
-   const firstBar=first,lastBar=Math.min(measureCount,first+measuresPerPage);
-   for(let bar=firstBar;bar<lastBar;bar++){
-    const x0=150+(bar-first)*145,x1=x0+145;
-    body+='<line x1="'+x0+'" y1="'+(y-2)+'" x2="'+x0+'" y2="'+(y+(staffCount-1)*72+42)+'" stroke="#222"/>';
-    body+='<line x1="'+x1+'" y1="'+(y-2)+'" x2="'+x1+'" y2="'+(y+(staffCount-1)*72+42)+'" stroke="#222"/>';
-    body+='<text x="'+(x0+4)+'" y="'+(y-7)+'" font-size="9" fill="#555">'+(bar+1)+'</text>';
-    for(const n of tr.notes){
-     const beat=Number(n.time||0),dur=Number(n.duration||.25);
-     if(Math.floor(beat/beatsPerBar)!==bar)continue;
-     const staff=grand&&n.midi<60?2:1;
-     const midi=n.midi, names=["C","D","E","F","G","A","B"];
-     const semis=((midi%12)+12)%12, octave=Math.floor(midi/12)-1;
-     const steps=octave*7+names.indexOf(["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"][semis][0]);
-     const ref=staff===1?4*7+2:2*7+4; // E4 treble, G2 bass
-     const step=steps-ref;
-     const baseY=y+(staff-1)*72+40-step*5;
-     const x=x0+12+(beat-bar*beatsPerBar)/beatsPerBar*125;
-     const filled=dur<1.5;
-     body+='<ellipse cx="'+x+'" cy="'+baseY+'" rx="5.8" ry="4.1" transform="rotate(-18 '+x+' '+baseY+')" fill="'+(filled?"#171717":"white")+'" stroke="#171717" stroke-width="1.4"/>';
-     if(dur<4)body+='<line x1="'+(x+5)+'" y1="'+(baseY-1)+'" x2="'+(x+5)+'" y2="'+(baseY-32)+'" stroke="#171717" stroke-width="1.4"/>';
-     if(dur<=.5)body+='<path d="M'+(x+5)+' '+(baseY-32)+' q12 7 7 18" fill="none" stroke="#171717" stroke-width="1.5"/>';
-     if(semis===1||semis===3||semis===6||semis===8||semis===10)body+='<text x="'+(x-14)+'" y="'+(baseY+4)+'" font-size="12">♯</text>';
+
+function groupNotes(notes, staffFor) {
+  const groups = new Map();
+  for (const note of notes) {
+    const start = Math.max(0, Math.round(Number(note.time || 0) * 960));
+    const duration = Math.max(1, Math.round(Math.max(.01, Number(note.duration || .25)) * 960));
+    const staff = staffFor(note);
+    const key = start + ":" + duration + ":" + staff;
+    if (!groups.has(key)) groups.set(key, { start, end: start + duration, duration, staff, notes: [] });
+    groups.get(key).notes.push(note);
+  }
+  return [...groups.values()].sort((a, b) => a.start - b.start || a.staff - b.staff || a.end - b.end);
+}
+
+function assignVoices(events, staffCount) {
+  const voices = Array.from({ length: staffCount }, () => []);
+  for (let staff = 1; staff <= staffCount; staff++) {
+    const laneEnds = [];
+    for (const event of events.filter(item => item.staff === staff)) {
+      let lane = laneEnds.findIndex(end => end <= event.start);
+      if (lane < 0) lane = laneEnds.length;
+      laneEnds[lane] = event.end;
+      event.voice = lane + 1;
+      if (!voices[staff - 1][lane]) voices[staff - 1][lane] = [];
+      voices[staff - 1][lane].push(event);
     }
-   }
-   y+=staffCount===2?166:116;
   }
-  pages.push('<div class="score-page"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" role="img" aria-label="Engraved music score"><rect width="794" height="1123" fill="#fffdf7"/>'+body+'</svg></div>');
- }
- host.innerHTML=pages.join("");
+  return voices;
 }
-export async function renderScore(state,host){
- host.replaceChildren();
- host.classList.add("osmd-score");
- const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
- await frame();await frame();
- // Render a deterministic A4 score first. The optional OSMD renderer can be
- // layered in later, but must never leave the user with a blank page.
- fallbackScore(state,host);
- return {backend:"MidiStudio A4 renderer"};
+
+function makePart(name, notes, partIndex, state, measureCount, ticksPerMeasure, staffMode) {
+  const grand = staffMode === "grand";
+  const staffCount = grand ? 2 : 1;
+  const staffFor = staffMode === "split"
+    ? note => note.midi < 60 ? 2 : 1
+    : staffMode === "upper" ? () => 1
+    : staffMode === "lower" ? () => 2
+    : () => 1;
+  const events = groupNotes(notes, staffFor);
+  const voices = assignVoices(events, staffCount);
+  const laneCounts = voices.map(lanes => Math.max(1, lanes.length));
+  let measures = "";
+
+  for (let bar = 0; bar < measureCount; bar++) {
+    const from = bar * ticksPerMeasure;
+    const to = from + ticksPerMeasure;
+    let body = "";
+
+    if (bar === 0) {
+      body += '<attributes><divisions>960</divisions><key><fifths>' +
+        (FIFTHS[state.key] ?? 0) + '</fifths></key><time><beats>' +
+        state.numerator + '</beats><beat-type>' + state.denominator + '</beat-type></time>';
+      if (grand) {
+        body += '<staves>2</staves><part-symbol>brace</part-symbol>' +
+          '<clef number="1"><sign>G</sign><line>2</line></clef>' +
+          '<clef number="2"><sign>F</sign><line>4</line></clef>';
+      } else {
+        const avg = notes.length ? notes.reduce((sum, n) => sum + n.midi, 0) / notes.length : 60;
+        body += '<clef><sign>' + (avg < 60 ? "F" : "G") + '</sign><line>' + (avg < 60 ? 4 : 2) + '</line></clef>';
+      }
+      body += "</attributes>";
+      if (partIndex === 0) {
+        const bpm = Math.max(20, Math.min(400, Number(state.bpm) || 120));
+        body += '<direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>' +
+          Math.round(bpm) + '</per-minute></metronome></direction-type><sound tempo="' + bpm + '"/></direction>';
+      }
+    }
+
+    let firstVoice = true;
+    for (let staff = 1; staff <= staffCount; staff++) {
+      const lanes = voices[staff - 1];
+      for (let lane = 0; lane < laneCounts[staff - 1]; lane++) {
+        if (!firstVoice) body += '<backup><duration>' + ticksPerMeasure + '</duration></backup>';
+        firstVoice = false;
+        const laneEvents = (lanes[lane] || [])
+          .filter(event => event.start < to && event.end > from)
+          .sort((a, b) => a.start - b.start);
+        let cursor = from;
+
+        for (const event of laneEvents) {
+          const start = Math.max(from, event.start);
+          const end = Math.min(to, event.end);
+          if (start > cursor) body += restXml(start - cursor, lane + 1, staff);
+          const segment = end - start;
+          event.notes.forEach((note, index) => {
+            body += makeNoteXml(note, segment, lane + 1, staff, state.key,
+              event.end > to, event.start < from, index > 0);
+          });
+          cursor = Math.max(cursor, end);
+        }
+        if (cursor < to) body += restXml(to - cursor, lane + 1, staff);
+      }
+    }
+    if (bar === measureCount - 1) body += '<barline location="right"><bar-style>light-heavy</bar-style></barline>';
+    measures += '<measure number="' + (bar + 1) + '">' + body + "</measure>";
+  }
+  return '<part id="P' + (partIndex + 1) + '">' + measures + "</part>";
+}
+
+export function buildMusicXml(state) {
+  const tracks = (state.tracks || []).filter(track => Array.isArray(track.notes) && track.notes.length);
+  if (!tracks.length) throw new Error("There are no notes to engrave yet.");
+
+  const numerator = Math.max(1, Number(state.numerator) || 4);
+  const denominator = Math.max(1, Number(state.denominator) || 4);
+  const beatsPerMeasure = numerator * 4 / denominator;
+  const ticksPerMeasure = Math.round(beatsPerMeasure * 960);
+  const lastBeat = Math.max(0, ...tracks.flatMap(track =>
+    track.notes.map(note => Number(note.time || 0) + Math.max(.01, Number(note.duration || .25)))
+  ));
+  const measureCount = Math.max(1, Math.ceil(lastBeat / beatsPerMeasure));
+
+  // Two imported piano tracks are commonly a right-hand / left-hand split.
+  // Keep them together on a single grand staff so the result reads as piano music.
+  let parts;
+  let partNames;
+  if (tracks.length === 2) {
+    const upper = tracks[0].notes;
+    const lower = tracks[1].notes;
+    const merged = [...upper, ...lower];
+    parts = [makePart("Piano", merged, 0, state, measureCount, ticksPerMeasure, "grand")];
+    partNames = '<score-part id="P1"><part-name>Piano</part-name><part-abbreviation>Pno.</part-abbreviation></score-part>';
+  } else {
+    parts = tracks.map((track, index) => {
+      const pitches = track.notes.map(note => note.midi);
+      const hasLow = pitches.some(pitch => pitch < 60);
+      const hasHigh = pitches.some(pitch => pitch >= 60);
+      const mode = hasLow && hasHigh ? "split" : "single";
+      return makePart(track.name || ("Track " + (index + 1)), track.notes, index, state,
+        measureCount, ticksPerMeasure, mode);
+    });
+    partNames = tracks.map((track, index) =>
+      '<score-part id="P' + (index + 1) + '"><part-name>' +
+      escapeXml(track.name || ("Track " + (index + 1))) +
+      '</part-name></score-part>'
+    ).join("");
+  }
+
+  return '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<score-partwise version="3.1><work><work-title>' +
+    escapeXml(state.name || "MidiStudio Score") +
+    '</work-title></work><identification><encoding><software>MidiStudio</software></encoding></identification>' +
+    '<part-list>' + partNames + '</part-list>' + parts.join("") + '</score-partwise>';
+}
+
+export async function renderScore(state, host) {
+  host.replaceChildren();
+  host.classList.add("osmd-score");
+  const loading = document.createElement("div");
+  loading.className = "score-loading";
+  loading.textContent = "Loading professional notation engine…";
+  host.append(loading);
+
+  const toolkit = await loadVerovio();
+  const musicXml = buildMusicXml(state);
+  toolkit.setOptions({
+    pageWidth: 2100,
+    pageHeight: 2970,
+    scale: 38,
+    adjustPageWidth: false,
+    adjustPageHeight: false,
+    breaks: "auto",
+    pageMarginTop: 95,
+    pageMarginBottom: 95,
+    pageMarginLeft: 110,
+    pageMarginRight: 110,
+    spacingSystem: 8,
+    spacingStaff: 8,
+    header: "none",
+    footer: "none",
+    svgViewBox: true,
+    engravePage: true
+  });
+
+  if (!toolkit.loadData(musicXml)) {
+    throw new Error("Verovio could not parse the generated MusicXML.");
+  }
+  const pageCount = Math.max(1, toolkit.getPageCount());
+  const pages = [];
+  for (let page = 1; page <= pageCount; page++) {
+    const svg = toolkit.renderToSVG(page);
+    if (!svg || !svg.includes("<svg")) throw new Error("Verovio failed to render page " + page + ".");
+    const section = document.createElement("section");
+    section.className = "score-page verovio-page";
+    section.innerHTML = svg;
+    pages.push(section);
+  }
+  host.replaceChildren(...pages);
+  host.dataset.pageCount = String(pageCount);
+  host.dataset.engine = "Verovio " + toolkit.getVersion();
+  return { backend: "Verovio", pageCount, version: toolkit.getVersion() };
 }
