@@ -76,6 +76,7 @@ function startPreview(){if(previewing){elapsed=(performance.now()-startedAt)/100
 async function createExportAudioStream(){
  await Tone.start();
  const raw=Tone.getContext().rawContext;
+ if(raw.state!=="running") await raw.resume();
  const destination=raw.createMediaStreamDestination();
  const output=new Tone.Gain(settings().audioVolume).toDestination();
  output.connect(destination);
@@ -117,15 +118,31 @@ async function exportVideo(){
  // Anchor both clocks to MediaRecorder's actual start event. Calling start()
  // does not mean the recorder has begun timestamping tracks yet.
  drawFrame(0);
- let recordWallStart=0;
- const exportFrame=now=>{elapsed=(now-recordWallStart)/1000;drawFrame(elapsed);$("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";if(elapsed>=total){elapsed=total;drawFrame(total);recorder.stop();return}requestAnimationFrame(exportFrame)};
- recorder.onstart=()=>{
+ let recordWallStart=0,exportStarted=false,startWatchdog=0;
+ const exportFrame=now=>{if(!recording)return;elapsed=(now-recordWallStart)/1000;drawFrame(elapsed);$("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";if(elapsed>=total){elapsed=total;drawFrame(total);if(recorder.state==="recording")recorder.stop();return}requestAnimationFrame(exportFrame)};
+ const beginExportClock=()=>{
+  if(exportStarted||recorder.state!=="recording")return;
+  exportStarted=true;clearTimeout(startWatchdog);
   recordWallStart=performance.now();
   const recordAudioStart=rawContext.currentTime;
   scheduleExportNotes(audioPack,recordAudioStart+3.6);
+  $("animStatus").textContent="Rendering video · 0%";
   requestAnimationFrame(exportFrame);
  };
+ recorder.onstart=beginExportClock;
  recorder.start(1000);
+ // Some mobile browsers delay or omit the onstart event. Recover only after
+ // confirming that MediaRecorder is actually recording.
+ startWatchdog=setTimeout(()=>{
+  if(recorder.state==="recording")beginExportClock();
+  else if(recording){
+   $("animStatus").textContent="Recorder did not start";
+   toast("Video recording did not start. Please try again.");
+   stream.getTracks().forEach(t=>t.stop());
+   audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose();
+   recording=false;$("animExport").disabled=false;
+  }
+ },1800);
 }
 export function initAnimation(api){
  getProject=api.getProject;getDuration=api.getDuration;toast=api.toast;canvas=$("animCanvas");ctx=canvas.getContext("2d");
