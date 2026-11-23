@@ -110,31 +110,66 @@ export function buildMusicXml(state){
  const parts=tracks.map((t,i)=>makePart(t,i,state,measureCount,ticksPerMeasure)).join("");
  return '<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>'+esc(state.name||"MidiStudio Score")+'</work-title></work><identification><encoding><software>MidiStudio</software></encoding></identification><part-list>'+partList+'</part-list>'+parts+'</score-partwise>';
 }
+function fallbackScore(state,host){
+ const tracks=state.tracks.filter(t=>Array.isArray(t.notes)&&t.notes.length);
+ if(!tracks.length)throw new Error("There are no notes to engrave yet.");
+ const beatsPerBar=Number(state.numerator||4)*4/Number(state.denominator||4);
+ const lastBeat=Math.max(1,...tracks.flatMap(t=>t.notes.map(n=>Number(n.time||0)+Number(n.duration||.25))));
+ const measureCount=Math.max(1,Math.ceil(lastBeat/beatsPerBar));
+ const measuresPerPage=4, pages=[];
+ const escText=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+ const staffTop=130, rowHeight=tracks.reduce((h,t)=>h+(isGrandStaff(t)?150:100),0)+28;
+ for(let first=0;first<measureCount;first+=measuresPerPage){
+  const pageNo=pages.length+1, width=794,height=1123;
+  let y=staffTop,body="";
+  body+='<text x="55" y="58" font-size="24" font-family="serif" font-weight="bold">'+escText(state.name||"MidiStudio Score")+'</text>';
+  body+='<text x="55" y="86" font-size="12" font-family="sans-serif">'+escText("Tempo: "+(state.bpm||120)+" BPM · "+state.numerator+"/"+state.denominator+" · Page "+pageNo)+'</text>';
+  for(const tr of tracks){
+   const grand=isGrandStaff(tr), staffCount=grand?2:1, clef=clefFor(tr);
+   body+='<text x="55" y="'+(y-18)+'" font-size="13" font-family="sans-serif" font-weight="bold">'+escText(tr.name||"Track")+'</text>';
+   for(let st=1;st<=staffCount;st++){
+    const top=y+(st-1)*72;
+    for(let line=0;line<5;line++)body+='<line x1="75" y1="'+(top+line*10)+'" x2="744" y2="'+(top+line*10)+'" stroke="#222" stroke-width="1"/>';
+    body+='<text x="53" y="'+(top+39)+'" font-size="38" font-family="serif">'+(grand?(st===1?"𝄞":"𝄢"):(clef.sign==="G"?"𝄞":"𝄢"))+'</text>';
+   }
+   if(grand)body+='<path d="M68 '+(y+5)+' C40 '+(y+35)+',40 '+(y+105)+',68 '+(y+137)+'" fill="none" stroke="#222" stroke-width="2"/>';
+   const firstBar=first,lastBar=Math.min(measureCount,first+measuresPerPage);
+   for(let bar=firstBar;bar<lastBar;bar++){
+    const x0=150+(bar-first)*145,x1=x0+145;
+    body+='<line x1="'+x0+'" y1="'+(y-2)+'" x2="'+x0+'" y2="'+(y+(staffCount-1)*72+42)+'" stroke="#222"/>';
+    body+='<line x1="'+x1+'" y1="'+(y-2)+'" x2="'+x1+'" y2="'+(y+(staffCount-1)*72+42)+'" stroke="#222"/>';
+    body+='<text x="'+(x0+4)+'" y="'+(y-7)+'" font-size="9" fill="#555">'+(bar+1)+'</text>';
+    for(const n of tr.notes){
+     const beat=Number(n.time||0),dur=Number(n.duration||.25);
+     if(Math.floor(beat/beatsPerBar)!==bar)continue;
+     const staff=grand&&n.midi<60?2:1;
+     const midi=n.midi, names=["C","D","E","F","G","A","B"];
+     const semis=((midi%12)+12)%12, octave=Math.floor(midi/12)-1;
+     const steps=octave*7+names.indexOf(["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"][semis][0]);
+     const ref=staff===1?4*7+2:2*7+4; // E4 treble, G2 bass
+     const step=steps-ref;
+     const baseY=y+(staff-1)*72+40-step*5;
+     const x=x0+12+(beat-bar*beatsPerBar)/beatsPerBar*125;
+     const filled=dur<1.5;
+     body+='<ellipse cx="'+x+'" cy="'+baseY+'" rx="5.8" ry="4.1" transform="rotate(-18 '+x+' '+baseY+')" fill="'+(filled?"#171717":"white")+'" stroke="#171717" stroke-width="1.4"/>';
+     if(dur<4)body+='<line x1="'+(x+5)+'" y1="'+(baseY-1)+'" x2="'+(x+5)+'" y2="'+(baseY-32)+'" stroke="#171717" stroke-width="1.4"/>';
+     if(dur<=.5)body+='<path d="M'+(x+5)+' '+(baseY-32)+' q12 7 7 18" fill="none" stroke="#171717" stroke-width="1.5"/>';
+     if(semis===1||semis===3||semis===6||semis===8||semis===10)body+='<text x="'+(x-14)+'" y="'+(baseY+4)+'" font-size="12">♯</text>';
+    }
+   }
+   y+=staffCount===2?166:116;
+  }
+  pages.push('<div class="score-page"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" role="img" aria-label="Engraved music score"><rect width="794" height="1123" fill="#fffdf7"/>'+body+'</svg></div>');
+ }
+ host.innerHTML=pages.join("");
+}
 export async function renderScore(state,host){
  host.replaceChildren();
  host.classList.add("osmd-score");
- const xml=buildMusicXml(state);
- const parsed=new DOMParser().parseFromString(xml,"application/xml");
- const parseError=parsed.querySelector("parsererror");
- if(parseError)throw new Error("Generated MusicXML is invalid: "+parseError.textContent.slice(0,240));
-
- // OSMD measures the target element while loading. Wait until the sheet tab
- // has actually been revealed so its first layout is not calculated at 0px.
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
- await frame();
- await frame();
- const osmd=new OpenSheetMusicDisplay(host,{
-  backend:"svg",autoResize:true,drawTitle:true,drawSubtitle:false,drawComposer:false,
-  drawPartNames:true,drawMeasureNumbers:true,drawCredits:false,pageFormat:"A4_P",
-  pageBackgroundColor:"#fffdf7",defaultColorMusic:"#171717",defaultColorLabel:"#171717",
-  spacingFactor:1.2,compactMode:false,followCursor:false,stretchLastSystemLine:true
- });
- await osmd.load(xml);
- await frame();
- osmd.render();
- await frame();
- // A blank panel is worse than a useful diagnostic; verify that engraving
- // actually produced visible vector notation before reporting success.
- if(!host.querySelector("svg"))throw new Error("The notation engine loaded the score but produced no SVG. Check the page visibility and MusicXML layout.");
- return osmd;
+ await frame();await frame();
+ // Render a deterministic A4 score first. The optional OSMD renderer can be
+ // layered in later, but must never leave the user with a blank page.
+ fallbackScore(state,host);
+ return {backend:"MidiStudio A4 renderer"};
 }
