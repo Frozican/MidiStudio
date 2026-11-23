@@ -323,7 +323,7 @@ export async function renderScore(state, host) {
   const pageCount = Math.max(1, toolkit.getPageCount());
   const pages = [];
   for (let page = 1; page <= pageCount; page++) {
-    const svg = toolkit.renderToSVG(page);
+    const svg = toolkit.renderToSVG(page, {});
     if (!svg || !svg.includes("<svg")) throw new Error("Verovio failed to render page " + page + ".");
     const section = document.createElement("section");
     section.className = "score-page verovio-page";
@@ -332,6 +332,6 @@ export async function renderScore(state, host) {
   }
   host.replaceChildren(...pages);
   host.dataset.pageCount = String(pageCount);
-  host.dataset.engine = "Verovio " + toolkit.getVersion();
-  return { backend: "Verovio", pageCount, version: toolkit.getVersion() };
+  host.dataset.engine = "Verovio";
+  return { backend: "Verovio", pageCount };
 }
