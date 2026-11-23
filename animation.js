@@ -113,42 +113,50 @@ async function exportVideo(){
  const timing=animationTiming(),total=timing.total;if(total>900){toast("This animation is too long to export in one video");return}
  previewing=false;recording=true;elapsed=0;active=false;if(raf){cancelAnimationFrame(raf);raf=0}$("animPlay").textContent="▶ Preview";$("animExport").disabled=true;$("animStatus").textContent="Loading piano sound…";
  let audioPack;try{audioPack=await createExportAudioStream()}catch(e){console.error(e);recording=false;$("animExport").disabled=false;$("animStatus").textContent="Audio could not be loaded";toast("Could not load piano audio. Check your connection and try again.");return}
- const videoStream=canvas.captureStream(60),tracks=[...videoStream.getVideoTracks(),...audioPack.destination.stream.getAudioTracks()],stream=new MediaStream(tracks),chunks=[];let recorder=null,mime=null;
+ // Request each canvas frame explicitly where supported, avoiding stale
+ // pre-start frames that can look like a teleport on the first video frame.
+ let videoStream=canvas.captureStream(0),videoTrack=videoStream.getVideoTracks()[0];
+ if(!videoTrack||typeof videoTrack.requestFrame!=="function"){
+  videoStream.getTracks().forEach(t=>t.stop());
+  videoStream=canvas.captureStream(60);
+  videoTrack=videoStream.getVideoTracks()[0];
+ }
+ const requestVideoFrame=()=>{if(videoTrack&&typeof videoTrack.requestFrame==="function")videoTrack.requestFrame()};
+ const tracks=[...videoStream.getVideoTracks(),...audioPack.destination.stream.getAudioTracks()],stream=new MediaStream(tracks),chunks=[];let recorder=null,mime=null;
  for(const candidate of formats){if(!MediaRecorder.isTypeSupported(candidate))continue;try{recorder=new MediaRecorder(stream,{mimeType:candidate,videoBitsPerSecond:12000000,audioBitsPerSecond:192000});mime=candidate;break}catch(e){console.warn("Video format unavailable:",candidate,e)}}
  if(!recorder){stream.getTracks().forEach(t=>t.stop());audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose();recording=false;$("animExport").disabled=false;$("animStatus").textContent="No supported MP4/WebM encoder";toast("This browser cannot encode MP4 or WebM video");return}
  $("animStatus").textContent="Rendering video with piano audio…";
  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
  recorder.onerror=()=>{$("animStatus").textContent="Video export failed";toast("Video export failed")};
  recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(audioPack){audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose()}recording=false;$("animExport").disabled=false;const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=(getProject().name||"midistudio").replace(/[^a-z0-9-_]+/gi,"-")+"-visualizer."+(mime.startsWith("video/mp4")?"mp4":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);$("animStatus").textContent="Export complete · "+(mime.startsWith("video/mp4")?"MP4":"WebM fallback")+" · "+(blob.size/1048576).toFixed(1)+" MB";toast(mime.startsWith("video/mp4")?"MP4 video exported":"MP4 unavailable here; exported WebM instead")};
- // Drive canvas frames with the browser's monotonic wall clock so the
- // captured video stays real-time on mobile. Pair it with the AudioContext
- // at MediaRecorder start; both clocks then share the same elapsed timeline.
+ // Start video and audio from one shared zero point. The first encoded
+ // frame shows the first note touching the keyboard; its MIDI event is
+ // scheduled at the same AudioContext start time.
  const rawContext=Tone.getContext().rawContext;
- drawFrame(0);
- let audioClockStart=0,recordWallStart=0,exportStarted=false,startWatchdog=0;
+ let recordWallStart=0,exportStarted=false,startWatchdog=0;
  const exportFrame=now=>{
   if(!recording)return;
   elapsed=(now-recordWallStart)/1000;
   drawFrame(elapsed);
+  requestVideoFrame();
   $("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";
-  if(elapsed>=total){elapsed=total;drawFrame(total);if(recorder.state==="recording")recorder.stop();return}
+  if(elapsed>=total){elapsed=total;drawFrame(total);requestVideoFrame();if(recorder.state==="recording")recorder.stop();return}
   requestAnimationFrame(exportFrame);
  };
  const beginExportClock=()=>{
   if(exportStarted||recorder.state!=="recording")return;
   exportStarted=true;clearTimeout(startWatchdog);
   recordWallStart=performance.now();
-  audioClockStart=rawContext.currentTime;
-  // Start on the first incoming note; its audio starts exactly when it reaches the keys.
-  const firstKeyAudioTime=audioClockStart+timing.intro+timing.leadIn;
-  scheduleExportNotes(audioPack,firstKeyAudioTime-timing.first);
+  const audioStart=rawContext.currentTime;
+  elapsed=0;
+  drawFrame(0);
+  requestVideoFrame();
+  scheduleExportNotes(audioPack,audioStart-timing.first);
   $("animStatus").textContent="Rendering video · 0%";
   requestAnimationFrame(exportFrame);
  };
  recorder.onstart=beginExportClock;
  recorder.start(1000);
- // Some mobile browsers delay or omit the onstart event. Recover only after
- // confirming that MediaRecorder is actually recording.
  startWatchdog=setTimeout(()=>{
   if(recorder.state==="recording")beginExportClock();
   else if(recording){
