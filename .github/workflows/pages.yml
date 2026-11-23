@@ -35,7 +35,7 @@ jobs:
           if [ -n "$LICENSE_FILE" ]; then
             cp "$LICENSE_FILE" vendor/VEROVIO-LICENSE.txt
           else
-            curl -fsSL https://www.gnu.org/licenses/lgpl-3.0.txt -o vendor/VEROVIO-LICENSE.txt
+            cp /usr/share/common-licenses/LGPL-3 vendor/VEROVIO-LICENSE.txt
           fi
 
       - name: Upload Pages artifact
