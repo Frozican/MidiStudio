@@ -69,20 +69,20 @@ function piano(){
  a+='<line x1="'+px+'" y1="'+top+'" x2="'+px+'" y2="'+(top+h)+'" stroke="#ff718c" stroke-width="2"/><path d="M'+(px-5)+' 0 H'+(px+5)+' L'+px+' 7 Z" fill="#ff718c"/>';
  a+='</svg>';
  $("piano").innerHTML=a;
- const svg=document.querySelector("#piano svg");
- svg.onpointerdown=e=>{
+ const svg=document.querySelector("#piano svg"),surface=$("pianoScroll");
+ surface.onpointerdown=e=>{
   const r=svg.getBoundingClientRect(),x=(e.clientX-r.left)*w/r.width,y=(e.clientY-r.top)*(h+top)/r.height;
   if(y<top||x<lw)return;
   const target=e.target.closest("[data-note],[data-resize]"),id=target?.dataset.note||target?.dataset.resize;
   if(id){
    const n=track().notes.find(n=>n.id===id);S.selected=id;renderInspector();snapshot();
-   drag={id,x,y,time:n.time,midi:n.midi,duration:n.duration,resize:!!target.dataset.resize};svg.setPointerCapture(e.pointerId);
+   drag={id,x,y,time:n.time,midi:n.midi,duration:n.duration,resize:!!target.dataset.resize};surface.setPointerCapture(e.pointerId);
   }else{
    snapshot();const n=addNote(track(),Math.max(0,Math.round((x-lw)/bw*4)/4),high-Math.floor((y-top)/rh));
    S.selected=n.id;render();changed();
   }
  };
- svg.onpointermove=e=>{
+ surface.onpointermove=e=>{
   if(!drag)return;
   const r=svg.getBoundingClientRect(),x=(e.clientX-r.left)*w/r.width,y=(e.clientY-r.top)*(h+top)/r.height,n=track().notes.find(q=>q.id===drag.id);
   if(!n)return;
@@ -90,8 +90,8 @@ function piano(){
   else{n.time=Math.max(0,Math.round((drag.time+(x-drag.x)/bw)*16)/16);n.midi=Math.max(low,Math.min(high,drag.midi-Math.round((y-drag.y)/rh)))}
   piano();renderInspector();
  };
- svg.onpointerup=()=>{if(drag){drag=null;render();changed()}};
- svg.onpointercancel=()=>{if(drag){drag=null;render();changed()}};
+ surface.onpointerup=()=>{if(drag){drag=null;render();changed()}};
+ surface.onpointercancel=()=>{if(drag){drag=null;render();changed()}};
 }
 let scoreRenderId=0;
 async function sheet(){
