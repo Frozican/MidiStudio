@@ -5,6 +5,8 @@ const escapeXml = value => String(value ?? "").replace(/[<>&"']/g, ch => ({
   "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;"
 }[ch]));
 
+export function preloadVerovio() { return loadVerovio(); }
+
 function loadVerovio() {
   if (toolkitPromise) return toolkitPromise;
 
