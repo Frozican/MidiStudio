@@ -27,7 +27,7 @@ function piano(){
  if(!track())return;
  const low=24,high=96,rh=18,top=30,lw=76,bw=56*S.zoom,beats=maxBeat(),w=Math.max(760,lw+beats*bw),h=(high-low+1)*rh;
  const blackKeys=[1,3,6,8,10];
- let a='<svg viewBox="0 0 '+w+' '+(h+top)+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Piano roll with a vertical piano keyboard">';
+ let a='<svg width="'+w+'" height="'+(h+top)+'" viewBox="0 0 '+w+' '+(h+top)+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Piano roll with a vertical piano keyboard">';
  a+='<defs><linearGradient id="noteFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c4b5ff"/><stop offset="1" stop-color="#8064e8"/></linearGradient><filter id="noteGlow" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>';
  a+='<rect width="100%" height="100%" fill="#10121a"/><rect x="0" y="0" width="'+w+'" height="'+top+'" fill="#191b25"/>';
  // Bar ruler and beat subdivisions.
