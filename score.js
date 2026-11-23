@@ -75,7 +75,7 @@ function loadVerovio() {
       script.async = true;
       script.dataset.midistudioVerovio = "true";
       script.addEventListener("error", () => fail(
-        new Error("Could not load Verovio. Check your internet connection and reload the score.")
+        new Error("Could not load the local Verovio engine. The deployment may be missing its vendor assets; rebuild and redeploy the site.")
       ), { once: true });
       document.head.appendChild(script);
     }
