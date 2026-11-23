@@ -118,7 +118,14 @@
               <label>Background <input id="animBg" type="color" value="#101426"></label>
               <label class="speedControl">Fall speed <input id="animSpeed" type="range" min="70" max="260" value="145"><b id="animSpeedValue">145 px/s</b></label>
               <label class="speedControl">Note opacity <input id="animOpacity" type="range" min="20" max="100" value="85"><b id="animOpacityValue">85%</b></label>
-              <label class="checkControl"><input id="animGlow" type="checkbox" checked> Glow effect</label>
+              <label class="speedControl">Note width <input id="animNoteSize" type="range" min="45" max="100" value="90"><b id="animNoteSizeValue">90%</b></label>
+              <label class="speedControl">Key glow <input id="animKeyGlow" type="range" min="0" max="35" value="12"><b id="animKeyGlowValue">12</b></label>
+              <label class="checkControl"><input id="animGlow" type="checkbox" checked> Note glow effect</label>
+            </div>
+            <div class="animationControlGroup">
+              <span class="animationLabel">AUDIO</span>
+              <label class="speedControl">Piano volume <input id="animAudioVolume" type="range" min="0" max="150" value="80"><b id="animAudioVolumeValue">80%</b></label>
+              <p class="animationHint">The exported WebM contains the sampled piano sound, synchronized with the animation.</p>
             </div>
             <div class="animationActions">
               <button id="animPlay" class="primary">▶ Preview</button>
@@ -127,7 +134,7 @@
               <small id="animStatus" role="status">Ready · video exports as WebM</small>
             </div>
           </div>
-          <p class="animationHint">Every note receives a position in the same color gradient, from the first note to the last. The keyboard lights up as notes reach the keys. Video export includes a synthesized audio track from the MIDI notes.</p>
+          <p class="animationHint">Customize the piano, falling notes, glow and colors. Export creates a WebM video with the real sampled piano sound synchronized to the MIDI.</p>
         </div>
       </div>
       <div class="bottom">
