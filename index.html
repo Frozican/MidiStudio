@@ -108,9 +108,16 @@
               <div class="gradientSample" id="gradientSample"></div>
             </div>
             <div class="animationControlGroup">
+              <span class="animationLabel">KEYBOARD COLORS</span>
+              <label>Pressed key <input id="animPressed" type="color" value="#55aaff"></label>
+              <label>White keys <input id="animWhiteKey" type="color" value="#f4f1ed"></label>
+              <label>Black keys <input id="animBlackKey" type="color" value="#151722"></label>
+            </div>
+            <div class="animationControlGroup">
               <span class="animationLabel">LOOK & MOTION</span>
               <label>Background <input id="animBg" type="color" value="#101426"></label>
               <label class="speedControl">Fall speed <input id="animSpeed" type="range" min="70" max="260" value="145"><b id="animSpeedValue">145 px/s</b></label>
+              <label class="speedControl">Note opacity <input id="animOpacity" type="range" min="20" max="100" value="85"><b id="animOpacityValue">85%</b></label>
               <label class="checkControl"><input id="animGlow" type="checkbox" checked> Glow effect</label>
             </div>
             <div class="animationActions">
@@ -120,7 +127,7 @@
               <small id="animStatus" role="status">Ready · video exports as WebM</small>
             </div>
           </div>
-          <p class="animationHint">Every note receives a position in the same color gradient, from the first note to the last. The keyboard lights up as notes reach the keys.</p>
+          <p class="animationHint">Every note receives a position in the same color gradient, from the first note to the last. The keyboard lights up as notes reach the keys. Video export includes a synthesized audio track from the MIDI notes.</p>
         </div>
       </div>
       <div class="bottom">
