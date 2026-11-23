@@ -113,9 +113,12 @@ function durationNotation(ticks) {
   ];
   candidates.sort((a, b) => Math.abs(a.value - beats) - Math.abs(b.value - beats));
   const best = candidates[0];
-  return Math.abs(best.value - beats) < 0.012
-    ? best
-    : null;
+  // MIDI note-off positions are often slightly off the theoretical grid.
+  // Still emit a real MusicXML note type for every note: without <type>,
+  // some renderers fall back to bare notehead dots with no stems or flags.
+  // Keep the exact MIDI duration in <duration>; this selects the closest
+  // conventional engraving value for the visible notehead/stem/flag.
+  return best;
 }
 
 function pitchFor(midi, key) {
