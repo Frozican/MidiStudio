@@ -1,4 +1,4 @@
-const VEROVIO_URL = "https://www.verovio.org/javascript/latest/verovio-toolkit-wasm.js";
+const VEROVIO_URL = new URL("./vendor/verovio-toolkit-wasm.js", import.meta.url).href;
 let toolkitPromise;
 
 const escapeXml = value => String(value ?? "").replace(/[<>&"']/g, ch => ({
