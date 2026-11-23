@@ -282,7 +282,7 @@ export function buildMusicXml(state) {
   }
 
   return '<?xml version="1.0" encoding="UTF-8"?>' +
-    '<score-partwise version="3.1><work><work-title>' +
+    '<score-partwise version="3.1"><work><work-title>' +
     escapeXml(state.name || "MidiStudio Score") +
     '</work-title></work><identification><encoding><software>MidiStudio</software></encoding></identification>' +
     '<part-list>' + partNames + '</part-list>' + parts.join("") + '</score-partwise>';
