@@ -75,7 +75,8 @@
 #piano svg{
  display:block;
  min-width:760px;
- width:100%;
+ width:auto;
+ max-width:none;
  height:auto;
  cursor:crosshair;
  touch-action:pan-y;
