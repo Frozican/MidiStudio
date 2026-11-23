@@ -31,7 +31,12 @@ jobs:
         run: |
           mkdir -p vendor
           cp /tmp/verovio/node_modules/verovio/dist/verovio-toolkit-wasm.js vendor/verovio-toolkit-wasm.js
-          cp /tmp/verovio/node_modules/verovio/LICENSE vendor/VEROVIO-LICENSE.txt
+          LICENSE_FILE="$(find /tmp/verovio/node_modules/verovio -maxdepth 2 -type f \\( -iname 'LICENSE*' -o -iname 'COPYING*' \\) -print -quit)"
+          if [ -n "$LICENSE_FILE" ]; then
+            cp "$LICENSE_FILE" vendor/VEROVIO-LICENSE.txt
+          else
+            curl -fsSL https://www.gnu.org/licenses/lgpl-3.0.txt -o vendor/VEROVIO-LICENSE.txt
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
