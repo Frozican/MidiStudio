@@ -7,59 +7,82 @@ const escapeXml = value => String(value ?? "").replace(/[<>&"']/g, ch => ({
 
 function loadVerovio() {
   if (toolkitPromise) return toolkitPromise;
-  toolkitPromise = new Promise((resolve, reject) => {
-    const finish = () => {
-      try {
-        if (!window.verovio?.toolkit) throw new Error("Verovio toolkit did not initialize.");
-        resolve(new window.verovio.toolkit());
-      } catch (error) { reject(error); }
-    };
-    if (window.verovio?.toolkit) return finish();
 
-    let script = document.querySelector('script[data-midistudio-verovio]');
+  toolkitPromise = new Promise((resolve, reject) => {
+    let settled = false;
+    let pollTimer;
+    let timeoutTimer;
+
+    const cleanup = () => {
+      clearTimeout(pollTimer);
+      clearTimeout(timeoutTimer);
+    };
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      toolkitPromise = null;
+      reject(error);
+    };
+    const finish = () => {
+      if (settled) return;
+      const module = window.verovio?.module;
+      // The toolkit constructor is exposed before the WASM runtime is ready.
+      // Emscripten's calledRun flag is the readiness check; never instantiate
+      // the toolkit merely because window.verovio.toolkit exists.
+      if (!module || !(module.calledRun || module.runtimeInitialized)) return;
+      try {
+        if (typeof window.verovio.toolkit !== "function") {
+          throw new Error("Verovio loaded, but its toolkit constructor is unavailable.");
+        }
+        const instance = new window.verovio.toolkit();
+        if (typeof instance.loadData !== "function" ||
+            typeof instance.setOptions !== "function" ||
+            typeof instance.renderToSVG !== "function") {
+          throw new Error("Verovio WASM initialized without the required rendering methods.");
+        }
+        settled = true;
+        cleanup();
+        resolve(instance);
+      } catch (error) {
+        fail(error);
+      }
+    };
+
+    let script = document.querySelector("script[data-midistudio-verovio]");
+    const watch = () => {
+      if (settled) return;
+      const module = window.verovio?.module;
+      if (module) {
+        const previous = module.onRuntimeInitialized;
+        if (!module.__midiStudioReadyHook) {
+          module.__midiStudioReadyHook = true;
+          module.onRuntimeInitialized = function () {
+            try { if (typeof previous === "function") previous.apply(this, arguments); }
+            finally { finish(); }
+          };
+        }
+        finish();
+      }
+      if (!settled) pollTimer = setTimeout(watch, 50);
+    };
+
     if (!script) {
       script = document.createElement("script");
       script.src = VEROVIO_URL;
       script.async = true;
       script.dataset.midistudioVerovio = "true";
+      script.addEventListener("error", () => fail(
+        new Error("Could not load Verovio. Check your internet connection and reload the score.")
+      ), { once: true });
       document.head.appendChild(script);
     }
-    let settled = false;
-    const done = () => {
-      if (settled) return;
-      settled = true;
-      finish();
-    };
-    const fail = () => {
-      if (settled) return;
-      settled = true;
-      toolkitPromise = null;
-      reject(new Error("Could not load Verovio. Check your internet connection and reload the score."));
-    };
-    script.addEventListener("error", fail, { once: true });
-    script.addEventListener("load", () => {
-      if (window.verovio?.toolkit) done();
-      else if (window.verovio?.module) {
-        const previous = window.verovio.module.onRuntimeInitialized;
-        window.verovio.module.onRuntimeInitialized = () => {
-          try { previous?.(); } finally { done(); }
-        };
-      } else fail();
-    }, { once: true });
-    // The script may already have loaded while its WASM runtime is starting.
-    const wait = () => {
-      if (window.verovio?.toolkit) done();
-      else if (!settled) requestAnimationFrame(wait);
-    };
-    wait();
-    setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        toolkitPromise = null;
-        reject(new Error("Verovio initialization timed out."));
-      }
+    watch();
+    timeoutTimer = setTimeout(() => {
+      fail(new Error("Verovio WebAssembly initialization timed out."));
     }, 45000);
   });
+
   return toolkitPromise;
 }
 
