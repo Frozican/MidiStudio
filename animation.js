@@ -22,6 +22,7 @@ function drawKeyboard(c,s,notes,songTime){
 }
 function drawFrame(elapsedSeconds){
  const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),songTime=elapsedSeconds-3.6,travel=s.speed,hitY=KEY_Y;
+ notes.forEach((n,i)=>n.gradientIndex=i);
  const grad=ctx.createLinearGradient(0,0,WIDTH,HEIGHT);grad.addColorStop(0,s.bg);grad.addColorStop(1,"#11131d");ctx.fillStyle=grad;ctx.fillRect(0,0,WIDTH,HEIGHT);
  ctx.save();ctx.globalAlpha=.16;for(let i=0;i<70;i++){const x=(i*197)%WIDTH,y=(i*113)%KEY_Y;ctx.fillStyle="#b9b0ff";ctx.fillRect(x,y,2,2)}ctx.restore();
  const keyW=WIDTH/(HIGH-LOW+1);
@@ -61,7 +62,7 @@ export function initAnimation(api){
  getProject=api.getProject;getDuration=api.getDuration;toast=api.toast;canvas=$("animCanvas");ctx=canvas.getContext("2d");
  $("animPlay").onclick=startPreview;$("animReset").onclick=()=>{previewing=false;elapsed=0;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Ready";refresh()};
  $("animExport").onclick=exportVideo;
- ["animStart","animEnd","animBg","animSpeed","animGlow"].forEach(id=>$(id).addEventListener("input",()=>{$("animSpeedValue").textContent=$("animSpeed").value+" px/s";refresh()}));
+ ["animStart","animEnd","animBg","animSpeed","animGlow"].forEach(id=>$(id).addEventListener("input",()=>{$("animSpeedValue").textContent=$("animSpeed").value+" px/s";$("gradientSample").style.background="linear-gradient(90deg,"+$("animStart").value+","+$("animEnd").value+")";refresh()}));
  $("animSpeedValue").textContent=$("animSpeed").value+" px/s";drawFrame(0);
  return{setActive,refresh};
 }
