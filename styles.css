@@ -90,3 +90,26 @@
  #piano{min-width:760px}
  #piano svg{min-width:760px}
 }
+
+/* Piano visualizer and video export */
+.tabs>div:first-child{flex-wrap:wrap}
+.animationPane{min-height:0!important;background:#13151d}
+.animationWorkspace{padding:16px;display:flex;flex-direction:column;gap:14px}
+.animationStage{width:100%;background:#0d1019;border:1px solid #35384a;border-radius:10px;overflow:hidden;box-shadow:0 12px 34px #0005}
+#animCanvas{display:block;width:100%;height:auto;aspect-ratio:16/9}
+.animationControls{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:12px}
+.animationControlGroup,.animationActions{background:#1a1d29;border:1px solid #303445;border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.animationLabel{font:600 10px 'DM Mono';letter-spacing:1px;color:#a8a1c5}
+.animationControlGroup label{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#c9cad5;font-size:11px}
+.animationControlGroup input[type=color]{width:42px;height:27px;padding:2px;border:1px solid #44475a;border-radius:6px;background:#10121a}
+.gradientSample{height:9px;border-radius:10px;background:linear-gradient(90deg,#55d6ff,#c66cff);box-shadow:0 0 15px #9b78ff35}
+.speedControl input{flex:1;min-width:60px;accent-color:#9b83ff}
+.speedControl b{font:10px 'DM Mono';color:#bdb4e8;white-space:nowrap}
+.checkControl{justify-content:flex-start!important}
+.checkControl input{accent-color:#9b83ff}
+.animationActions{justify-content:center}
+.animationActions button{min-height:37px}
+.animationActions .exportVideoButton{background:linear-gradient(100deg,#765ce1,#a04fd2);border-color:#967cff}
+#animStatus{font-size:10px;color:#a8aabd;text-align:center;line-height:1.4}
+.animationHint{margin:0;color:#888da1;font-size:10px;line-height:1.6}
+@media(max-width:850px){.animationWorkspace{padding:9px}.animationControls{grid-template-columns:1fr 1fr}.animationActions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.animationActions #animExport{grid-column:1/-1}.animationActions #animStatus{grid-column:1/-1}.animationHint{font-size:9px}}
