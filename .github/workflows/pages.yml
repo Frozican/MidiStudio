@@ -24,6 +24,15 @@ jobs:
         with:
           enablement: true
 
+      - name: Install pinned Verovio package
+        run: npm install --prefix /tmp/verovio verovio@6.4.1
+
+      - name: Prepare local notation engine
+        run: |
+          mkdir -p vendor
+          cp /tmp/verovio/node_modules/verovio/dist/verovio-toolkit-wasm.js vendor/verovio-toolkit-wasm.js
+          cp /tmp/verovio/node_modules/verovio/LICENSE vendor/VEROVIO-LICENSE.txt
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
