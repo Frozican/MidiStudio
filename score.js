@@ -111,14 +111,30 @@ export function buildMusicXml(state){
  return '<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>'+esc(state.name||"MidiStudio Score")+'</work-title></work><identification><encoding><software>MidiStudio</software></encoding></identification><part-list>'+partList+'</part-list>'+parts+'</score-partwise>';
 }
 export async function renderScore(state,host){
- host.replaceChildren();host.classList.add("osmd-score");
+ host.replaceChildren();
+ host.classList.add("osmd-score");
+ const xml=buildMusicXml(state);
+ const parsed=new DOMParser().parseFromString(xml,"application/xml");
+ const parseError=parsed.querySelector("parsererror");
+ if(parseError)throw new Error("Generated MusicXML is invalid: "+parseError.textContent.slice(0,240));
+
+ // OSMD measures the target element while loading. Wait until the sheet tab
+ // has actually been revealed so its first layout is not calculated at 0px.
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+ await frame();
+ await frame();
  const osmd=new OpenSheetMusicDisplay(host,{
   backend:"svg",autoResize:true,drawTitle:true,drawSubtitle:false,drawComposer:false,
   drawPartNames:true,drawMeasureNumbers:true,drawCredits:false,pageFormat:"A4_P",
   pageBackgroundColor:"#fffdf7",defaultColorMusic:"#171717",defaultColorLabel:"#171717",
   spacingFactor:1.2,compactMode:false,followCursor:false,stretchLastSystemLine:true
  });
- await osmd.load(buildMusicXml(state));
+ await osmd.load(xml);
+ await frame();
  osmd.render();
+ await frame();
+ // A blank panel is worse than a useful diagnostic; verify that engraving
+ // actually produced visible vector notation before reporting success.
+ if(!host.querySelector("svg"))throw new Error("The notation engine loaded the score but produced no SVG. Check the page visibility and MusicXML layout.");
  return osmd;
 }
