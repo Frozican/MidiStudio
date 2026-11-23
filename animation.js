@@ -119,16 +119,15 @@ async function exportVideo(){
  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
  recorder.onerror=()=>{$("animStatus").textContent="Video export failed";toast("Video export failed")};
  recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(audioPack){audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose()}recording=false;$("animExport").disabled=false;const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=(getProject().name||"midistudio").replace(/[^a-z0-9-_]+/gi,"-")+"-visualizer."+(mime.startsWith("video/mp4")?"mp4":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);$("animStatus").textContent="Export complete · "+(mime.startsWith("video/mp4")?"MP4":"WebM fallback")+" · "+(blob.size/1048576).toFixed(1)+" MB";toast(mime.startsWith("video/mp4")?"MP4 video exported":"MP4 unavailable here; exported WebM instead")};
- // Use ONE master clock for the rendered video frames and scheduled audio.
- // The 3.5-second intro is silence; notes then fall toward the keyboard.
- // Both the first key illumination and its MIDI event are anchored to the
- // same AudioContext timestamp, preventing separate-clock drift.
+ // Drive canvas frames with the browser's monotonic wall clock so the
+ // captured video stays real-time on mobile. Pair it with the AudioContext
+ // at MediaRecorder start; both clocks then share the same elapsed timeline.
  const rawContext=Tone.getContext().rawContext;
  drawFrame(0);
- let audioClockStart=0,exportStarted=false,startWatchdog=0;
- const exportFrame=()=>{
+ let audioClockStart=0,recordWallStart=0,exportStarted=false,startWatchdog=0;
+ const exportFrame=now=>{
   if(!recording)return;
-  elapsed=rawContext.currentTime-audioClockStart;
+  elapsed=(now-recordWallStart)/1000;
   drawFrame(elapsed);
   $("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";
   if(elapsed>=total){elapsed=total;drawFrame(total);if(recorder.state==="recording")recorder.stop();return}
@@ -137,9 +136,9 @@ async function exportVideo(){
  const beginExportClock=()=>{
   if(exportStarted||recorder.state!=="recording")return;
   exportStarted=true;clearTimeout(startWatchdog);
+  recordWallStart=performance.now();
   audioClockStart=rawContext.currentTime;
-  // The first MIDI event and first illuminated key occur at
-  // intro + leadIn on this exact shared clock.
+  // First audio onset matches first key illumination: 3.5s intro + lead-in.
   const firstKeyAudioTime=audioClockStart+timing.intro+timing.leadIn;
   scheduleExportNotes(audioPack,firstKeyAudioTime-timing.first);
   $("animStatus").textContent="Rendering video · 0%";
