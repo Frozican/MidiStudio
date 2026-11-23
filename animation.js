@@ -2,13 +2,13 @@ import * as Tone from "https://esm.sh/tone@15.1.22";
 const $=id=>document.getElementById(id);
 const LOW=24,HIGH=96,WIDTH=1280,HEIGHT=720,KEY_Y=624;
 const BLACK=new Set([1,3,6,8,10]);
-let getProject,getDuration,toast,active=false,previewing=false,recording=false,elapsed=0,startedAt=0,raf=0,canvas,ctx;
+let getProject,getDuration,toast,active=false,previewing=false,recording=false,elapsed=0,startedAt=0,raf=0,canvas,ctx,noteCache=null;
 
 function hexRgb(hex){const n=parseInt(String(hex).replace("#",""),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 function mixColor(a,b,t){const x=hexRgb(a),y=hexRgb(b);return"rgb("+x.map((v,i)=>Math.round(v+(y[i]-v)*t)).join(",")+")"}
 function settings(){return{start:$("animStart").value,end:$("animEnd").value,bg:$("animBg").value,speed:+$("animSpeed").value||145,glow:$("animGlow").checked,pressed:$("animPressed").value,white:$("animWhiteKey").value,black:$("animBlackKey").value,opacity:(+$("animOpacity").value||85)/100,keyGlow:+$("animKeyGlow").value||0,noteSize:(+$("animNoteSize").value||90)/100,audioVolume:Number($("animAudioVolume").value)/100}}
-function allNotes(){const p=getProject();return p.tracks.flatMap((track,ti)=>track.muted?[]:track.notes.map(n=>({...n,trackIndex:ti}))).sort((a,b)=>a.time-b.time||a.midi-b.midi)}
-function colorFor(note,notes,s){const i=notes.indexOf(note),t=notes.length<2?0:i/(notes.length-1);return mixColor(s.start,s.end,t)}
+function allNotes(){if(noteCache)return noteCache;const p=getProject();noteCache=p.tracks.flatMap((track,ti)=>track.muted?[]:track.notes.map(n=>({...n,trackIndex:ti}))).sort((a,b)=>a.time-b.time||a.midi-b.midi);noteCache.forEach((n,i)=>n.gradientIndex=i);return noteCache}
+function colorFor(note,notes,s){const i=note.gradientIndex||0,t=notes.length<2?0:i/(notes.length-1);return mixColor(s.start,s.end,t)}
 function keyX(midi,keyW){return(midi-LOW)*keyW}
 function drawKeyboard(c,s,notes,songTime){
  const keyW=WIDTH/(HIGH-LOW+1),white=s.white,black=s.black;
@@ -23,7 +23,7 @@ function drawKeyboard(c,s,notes,songTime){
 }
 function drawFrame(elapsedSeconds){
  const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),songTime=elapsedSeconds-3.6,travel=s.speed,hitY=KEY_Y;
- notes.forEach((n,i)=>n.gradientIndex=i);
+
  const grad=ctx.createLinearGradient(0,0,WIDTH,HEIGHT);grad.addColorStop(0,s.bg);grad.addColorStop(1,"#11131d");ctx.fillStyle=grad;ctx.fillRect(0,0,WIDTH,HEIGHT);
  ctx.save();ctx.globalAlpha=.16;for(let i=0;i<70;i++){const x=(i*197)%WIDTH,y=(i*113)%KEY_Y;ctx.fillStyle="#b9b0ff";ctx.fillRect(x,y,2,2)}ctx.restore();
  const keyW=WIDTH/(HIGH-LOW+1);
@@ -41,7 +41,7 @@ function drawFrame(elapsedSeconds){
 }
 function frame(now){if(!active&&!recording){raf=0;return}if(previewing&&!recording){elapsed=(now-startedAt)/1000;const total=3.6+getDuration()+1.2;if(elapsed>=total){elapsed=total;previewing=false;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Preview finished"}}
  drawFrame(elapsed);if(previewing||recording||active)raf=requestAnimationFrame(frame);else raf=0}
-function refresh(){if(canvas&&active&&!previewing&&!recording)drawFrame(elapsed)}
+function refresh(){noteCache=null;if(canvas&&active&&!previewing&&!recording)drawFrame(elapsed)}
 function setActive(value){active=value;if(active){if(!raf)raf=requestAnimationFrame(frame)}else if(!previewing&&!recording&&raf){cancelAnimationFrame(raf);raf=0}}
 function startPreview(){if(previewing){elapsed=(performance.now()-startedAt)/1000;previewing=false;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Preview paused";return}elapsed=0;startedAt=performance.now();previewing=true;$("animPlay").textContent="Ⅱ Pause";$("animStatus").textContent="Playing preview";setActive(true)}
 async function createExportAudioStream(){
