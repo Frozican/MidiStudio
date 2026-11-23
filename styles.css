@@ -35,3 +35,31 @@
 .osmd-score svg{display:block;max-width:100%;height:auto}
 @media(max-width:850px){.sheetScroll.osmd-score{padding:6px;gap:12px}.osmd-score>div{width:100%;overflow:hidden}}
 @media print{@page{size:A4 portrait;margin:10mm}.sheetScroll.osmd-score{display:block!important;height:auto!important;overflow:visible!important;padding:0!important;background:#fff!important}.osmd-score>div{box-shadow:none!important;margin:0 auto!important;break-after:page;page-break-after:always}.osmd-score>div:last-child{break-after:auto;page-break-after:auto}.osmd-score svg{width:100%!important;height:auto!important}}
+
+
+/* Fix the standalone SVG pages: an SVG with only a viewBox defaults to
+   300x150 unless its width is explicitly set, collapsing A4 pages. */
+.sheetScroll.osmd-score .score-page{
+ width:min(100%,794px)!important;
+ max-width:794px!important;
+ min-width:0!important;
+ flex:0 0 auto!important;
+ padding:0!important;
+ aspect-ratio:794 / 1123;
+ overflow:hidden!important;
+}
+.sheetScroll.osmd-score .score-page svg{
+ display:block!important;
+ width:100%!important;
+ max-width:none!important;
+ height:auto!important;
+ aspect-ratio:794 / 1123;
+}
+@media(max-width:850px){
+ .sheetScroll.osmd-score .score-page{width:100%!important}
+}
+@media print{
+ .sheetScroll.osmd-score .score-page{width:100%!important;max-width:none!important;aspect-ratio:auto;break-after:page;page-break-after:always}
+ .sheetScroll.osmd-score .score-page svg{width:100%!important;height:auto!important}
+ .sheetScroll.osmd-score .score-page:last-child{break-after:auto;page-break-after:auto}
+}
