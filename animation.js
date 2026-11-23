@@ -11,7 +11,7 @@ function allNotes(){if(noteCache)return noteCache;const p=getProject();noteCache
 function animationTiming(){
  const notes=allNotes(),bpm=Math.max(1,getProject().bpm||120),first=notes.length?notes[0].time*60/bpm:0;
  const lastEnd=notes.reduce((end,n)=>Math.max(end,(n.time+n.duration)*60/bpm),first);
- const intro=3.5;
+ const intro=0;
  const leadIn=Math.max(.1,(KEY_Y-90)/Math.max(30,settings().speed));
  return{first,leadIn,intro,origin:first-leadIn,total:intro+leadIn+Math.max(0,lastEnd-first)+1.2};
 }
@@ -138,7 +138,7 @@ async function exportVideo(){
   exportStarted=true;clearTimeout(startWatchdog);
   recordWallStart=performance.now();
   audioClockStart=rawContext.currentTime;
-  // First audio onset matches first key illumination: 3.5s intro + lead-in.
+  // Start on the first incoming note; its audio starts exactly when it reaches the keys.
   const firstKeyAudioTime=audioClockStart+timing.intro+timing.leadIn;
   scheduleExportNotes(audioPack,firstKeyAudioTime-timing.first);
   $("animStatus").textContent="Rendering video · 0%";
