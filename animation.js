@@ -138,7 +138,7 @@ async function exportVideo(){
  let recordWallStart=0,exportStarted=false,startWatchdog=0;
  const exportFrame=now=>{
   if(!recording)return;
-  elapsed=(now-recordWallStart)/1000;
+  elapsed=Math.max(0,(now-recordWallStart)/1000);
   drawFrame(elapsed);
   requestVideoFrame();
   $("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";
@@ -148,11 +148,15 @@ async function exportVideo(){
  const beginExportClock=()=>{
   if(exportStarted||recorder.state!=="recording")return;
   exportStarted=true;clearTimeout(startWatchdog);
-  recordWallStart=performance.now();
-  const audioStart=rawContext.currentTime;
+  // Draw the exact first frame before preparing the MIDI schedule.
+  // On mobile, scheduling thousands of events can block the main thread.
+  // The shared playback clock must therefore start AFTER scheduling.
   elapsed=0;
   drawFrame(0);
   requestVideoFrame();
+  const startDelay=0.35;
+  recordWallStart=performance.now()+startDelay;
+  const audioStart=rawContext.currentTime+startDelay;
   scheduleExportNotes(audioPack,audioStart-timing.first);
   $("animStatus").textContent="Rendering video · 0%";
   requestAnimationFrame(exportFrame);
