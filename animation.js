@@ -88,17 +88,19 @@ async function createExportAudioStream(){
  piano.connect(reverb);
  await Tone.loaded();
  await reverb.ready;
- const p=getProject(),bpm=Math.max(1,p.bpm||120),base=Tone.now()+3.6;
- for(const n of allNotes()){
-  const at=base+n.time*60/bpm,duration=Math.max(.045,n.duration*60/bpm),velocity=Math.max(1,Math.min(127,n.velocity||90))/127;
-  piano.triggerAttackRelease(Tone.Frequency(n.midi,"midi"),duration,at,velocity);
- }
  return{destination,piano,output,reverb};
+}
+function scheduleExportNotes(audioPack,songStartTime){
+ const p=getProject(),bpm=Math.max(1,p.bpm||120);
+ for(const n of allNotes()){
+  const at=songStartTime+n.time*60/bpm,duration=Math.max(.045,n.duration*60/bpm),velocity=Math.max(1,Math.min(127,n.velocity||90))/127;
+  audioPack.piano.triggerAttackRelease(Tone.Frequency(n.midi,"midi"),duration,at,velocity);
+ }
 }
 async function exportVideo(){
  if(recording)return;
  if(!canvas.captureStream||!window.MediaRecorder){toast("Video recording is not supported in this browser");return}
- const mime=["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"].find(t=>MediaRecorder.isTypeSupported(t));if(!mime){toast("No supported video format found");return}
+ const mime=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"].find(t=>MediaRecorder.isTypeSupported(t));if(!mime){toast("No supported video format found");return}
  const total=3.6+getDuration()+1.2;if(total>900){toast("This animation is too long to export in one video");return}
  previewing=false;recording=true;elapsed=0;active=true;$("animPlay").textContent="▶ Preview";$("animExport").disabled=true;$("animStatus").textContent="Loading piano sound…";
  let audioPack;try{audioPack=await createExportAudioStream()}catch(e){console.error(e);recording=false;$("animExport").disabled=false;$("animStatus").textContent="Audio could not be loaded";toast("Could not load piano audio. Check your connection and try again.");return}
@@ -107,9 +109,13 @@ async function exportVideo(){
  $("animStatus").textContent="Rendering video with piano audio…";
  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
  recorder.onerror=()=>{$("animStatus").textContent="Video export failed";toast("Video export failed")};
- recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(audioPack){audioPack.piano.dispose();audioPack.output.dispose()}recording=false;$("animExport").disabled=false;const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=(getProject().name||"midistudio").replace(/[^a-z0-9-_]+/gi,"-")+"-visualizer.webm";a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);$("animStatus").textContent="Export complete · "+(blob.size/1048576).toFixed(1)+" MB";toast("Visualizer video exported")};
- const begin=performance.now();recorder.start(500);
- const exportFrame=now=>{elapsed=(now-begin)/1000;drawFrame(elapsed);$("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";if(elapsed>=total){drawFrame(total);recorder.stop();return}requestAnimationFrame(exportFrame)};
+ recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(audioPack){audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose()}recording=false;$("animExport").disabled=false;const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=(getProject().name||"midistudio").replace(/[^a-z0-9-_]+/gi,"-")+"-visualizer."+(mime.startsWith("video/mp4")?"mp4":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);$("animStatus").textContent="Export complete · "+(mime.startsWith("video/mp4")?"MP4":"WebM fallback")+" · "+(blob.size/1048576).toFixed(1)+" MB";toast(mime.startsWith("video/mp4")?"MP4 video exported":"MP4 unavailable here; exported WebM instead")};
+ recorder.start(500);
+ // Use the Web Audio clock as the single master clock for both MIDI scheduling and video frames.
+ // This removes the setup-time offset that previously let audio begin before/after the captured video.
+ const recordClockStart=Tone.now(),songStartTime=recordClockStart+3.6;
+ scheduleExportNotes(audioPack,songStartTime);
+ const exportFrame=()=>{elapsed=Tone.now()-recordClockStart;drawFrame(elapsed);$("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";if(elapsed>=total){elapsed=total;drawFrame(total);recorder.stop();return}requestAnimationFrame(exportFrame)};
  requestAnimationFrame(exportFrame);
 }
 export function initAnimation(api){
