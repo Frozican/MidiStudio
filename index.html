@@ -85,7 +85,7 @@
     </aside>
     <section class="editor">
       <div class="tabs">
-        <div><button class="tab active" data-view="piano">Piano roll</button><button class="tab" data-view="sheet">Sheet music</button></div>
+        <div><button class="tab active" data-view="piano">Piano roll</button><button class="tab" data-view="sheet">Sheet music</button><button class="tab" data-view="animation">Animation</button></div>
         <div><button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button><button id="zoomOut">−</button><span id="zoom">100%</span><button id="zoomIn">＋</button></div>
       </div>
       <div class="pane" id="pianoPane">
@@ -95,6 +95,33 @@
       <div class="pane" id="sheetPane" hidden>
         <div class="panehead">SHEET MUSIC <small>Professionally engraved score · all tracks</small></div>
         <div class="sheetScroll" id="sheet"></div>
+      </div>
+      <div class="pane animationPane" id="animationPane" hidden>
+        <div class="panehead">PIANO VISUALIZER <small>Falling notes · live preview · video export</small></div>
+        <div class="animationWorkspace">
+          <div class="animationStage"><canvas id="animCanvas" width="1280" height="720" aria-label="Falling-note piano animation preview"></canvas></div>
+          <div class="animationControls">
+            <div class="animationControlGroup">
+              <span class="animationLabel">NOTE GRADIENT</span>
+              <label>Start <input id="animStart" type="color" value="#55d6ff"></label>
+              <label>End <input id="animEnd" type="color" value="#c66cff"></label>
+              <div class="gradientSample" id="gradientSample"></div>
+            </div>
+            <div class="animationControlGroup">
+              <span class="animationLabel">LOOK & MOTION</span>
+              <label>Background <input id="animBg" type="color" value="#101426"></label>
+              <label class="speedControl">Fall speed <input id="animSpeed" type="range" min="70" max="260" value="145"><b id="animSpeedValue">145 px/s</b></label>
+              <label class="checkControl"><input id="animGlow" type="checkbox" checked> Glow effect</label>
+            </div>
+            <div class="animationActions">
+              <button id="animPlay" class="primary">▶ Preview</button>
+              <button id="animReset">↺ Reset</button>
+              <button id="animExport" class="exportVideoButton">Export video</button>
+              <small id="animStatus" role="status">Ready · video exports as WebM</small>
+            </div>
+          </div>
+          <p class="animationHint">Every note receives a position in the same color gradient, from the first note to the last. The keyboard lights up as notes reach the keys.</p>
+        </div>
       </div>
       <div class="bottom">
         <span>Changes sync between both views</span>
