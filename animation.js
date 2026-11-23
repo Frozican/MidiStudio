@@ -1,20 +1,23 @@
 import * as Tone from "https://esm.sh/tone@15.1.22";
+import {createMidiRenderCore} from "./render-core.js";
 const $=id=>document.getElementById(id);
 const LOW=24,HIGH=96,WIDTH=1280,HEIGHT=720,KEY_Y=624;
 const BLACK=new Set([1,3,6,8,10]);
-let getProject,getDuration,toast,active=false,previewing=false,recording=false,elapsed=0,startedAt=0,raf=0,canvas,ctx,noteCache=null;
+let getProject,getDuration,toast,active=false,previewing=false,recording=false,elapsed=0,startedAt=0,raf=0,canvas,ctx,noteCache=null,renderTimeline=null;
 
 function hexRgb(hex){const n=parseInt(String(hex).replace("#",""),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 function mixColor(a,b,t){const x=hexRgb(a),y=hexRgb(b);return"rgb("+x.map((v,i)=>Math.round(v+(y[i]-v)*t)).join(",")+")"}
 function settings(){return{start:$("animStart").value,end:$("animEnd").value,bg:$("animBg").value,speed:+$("animSpeed").value||145,glow:$("animGlow").checked,pressed:$("animPressed").value,white:$("animWhiteKey").value,black:$("animBlackKey").value,opacity:(+$("animOpacity").value||85)/100,keyGlow:+$("animKeyGlow").value||0,noteSize:(+$("animNoteSize").value||90)/100,audioVolume:Number($("animAudioVolume").value)/100}}
-function allNotes(){if(noteCache)return noteCache;const p=getProject();noteCache=p.tracks.flatMap((track,ti)=>track.muted?[]:track.notes.map(n=>({...n,trackIndex:ti}))).sort((a,b)=>a.time-b.time||a.midi-b.midi);noteCache.forEach((n,i)=>n.gradientIndex=i);return noteCache}
+function allNotes(){
+ if(noteCache)return noteCache;
+ renderTimeline=createMidiRenderCore(getProject());
+ noteCache=renderTimeline.notes;
+ return noteCache;
+}
 function animationTiming(){
- const notes=allNotes(),bpm=Math.max(1,getProject().bpm||120),first=notes.length?notes[0].time*60/bpm:0;
- const lastEnd=notes.reduce((end,n)=>Math.max(end,(n.time+n.duration)*60/bpm),first);
- // The first frame is the exact hit frame: the first note touches the key.
- // There is no visual lead-in or silent audio intro.
- const intro=0,leadIn=0;
- return{first,leadIn,intro,origin:first,total:Math.max(0,lastEnd-first)+1.2};
+ allNotes();
+ const first=renderTimeline.firstNoteTime;
+ return{first,total:Math.max(0,renderTimeline.endTime-first)+1.2};
 }
 function colorFor(note,notes,s){const i=note.gradientIndex||0,t=notes.length<2?0:i/(notes.length-1);return mixColor(s.start,s.end,t)}
 function isWhite(midi){return !BLACK.has(midi%12)}
@@ -38,7 +41,7 @@ function drawKeyboard(c,s,notes,songTime){
   c.fillStyle="#ffffff18";c.fillRect(x+3,y+2,Math.max(1,w-6),3);
   c.strokeStyle="#08090d";c.lineWidth=1;c.strokeRect(x,y,w,blackH);
  }
- const lit=new Map();for(const n of notes){const bpm=Math.max(1,getProject().bpm||120),at=n.time*60/bpm,dur=Math.max(.045,n.duration*60/bpm);if(songTime>=at&&songTime<at+dur)lit.set(n.midi,colorFor(n,notes,s))}
+ const lit=new Map();for(const n of notes){const at=n.startSeconds,dur=n.durationSeconds;if(songTime>=at&&songTime<at+dur)lit.set(n.midi,colorFor(n,notes,s))}
  // Illuminate the actual key silhouette, not a rectangular overlay.
  for(const [m,col] of lit){
   const x=keyX(m,keyW),isNatural=isWhite(m),w=isNatural?keyW-2:blackW,h=isNatural?HEIGHT-KEY_Y-2:blackH-2,y=KEY_Y+(isNatural?1:1);
@@ -59,7 +62,7 @@ function drawKeyboard(c,s,notes,songTime){
  }
 }
 function drawFrame(elapsedSeconds){
- const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),timing=animationTiming(),songTime=elapsedSeconds-timing.intro+timing.origin,travel=s.speed,hitY=KEY_Y;
+ const s=settings(),notes=allNotes(),timing=animationTiming(),songTime=elapsedSeconds+timing.first,travel=s.speed,hitY=KEY_Y;
 
  const grad=ctx.createLinearGradient(0,0,WIDTH,HEIGHT);grad.addColorStop(0,s.bg);grad.addColorStop(1,"#11131d");ctx.fillStyle=grad;ctx.fillRect(0,0,WIDTH,HEIGHT);
  ctx.save();ctx.globalAlpha=.16;for(let i=0;i<70;i++){const x=(i*197)%WIDTH,y=(i*113)%KEY_Y;ctx.fillStyle="#b9b0ff";ctx.fillRect(x,y,2,2)}ctx.restore();
@@ -68,7 +71,7 @@ function drawFrame(elapsedSeconds){
  // Soft horizon and hit line.
  const glow=ctx.createLinearGradient(0,hitY-100,0,hitY+5);glow.addColorStop(0,"#9b83ff00");glow.addColorStop(1,"#9b83ff35");ctx.fillStyle=glow;ctx.fillRect(0,hitY-100,WIDTH,100);
  ctx.strokeStyle="#c5b6ff";ctx.shadowColor="#a18aff";ctx.shadowBlur=14;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,hitY);ctx.lineTo(WIDTH,hitY);ctx.stroke();ctx.shadowBlur=0;
- for(const n of notes){if(n.midi<LOW||n.midi>HIGH)continue;const start=n.time*60/bpm,dur=Math.max(.045,n.duration*60/bpm),bottom=hitY-(start-songTime)*travel,top=bottom-dur*travel;if(bottom<-5||top>hitY+8)continue;const baseKeyW=isWhite(n.midi)?keyW:keyW*.62,w=Math.max(3,baseKeyW*s.noteSize),x=keyX(n.midi,keyW)+(baseKeyW-w)/2,h=Math.max(7,bottom-top),col=colorFor(n,notes,s),alpha=.7+.3*Math.max(0,Math.min(1,(n.velocity||90)/127));ctx.globalAlpha=alpha*s.opacity;
+ for(const n of notes){if(n.midi<LOW||n.midi>HIGH)continue;const start=n.startSeconds,dur=n.durationSeconds,bottom=hitY-(start-songTime)*travel,top=bottom-dur*travel;if(bottom<-5||top>hitY+8)continue;const baseKeyW=isWhite(n.midi)?keyW:keyW*.62,w=Math.max(3,baseKeyW*s.noteSize),x=keyX(n.midi,keyW)+(baseKeyW-w)/2,h=Math.max(7,bottom-top),col=colorFor(n,notes,s),alpha=.7+.3*Math.max(0,Math.min(1,(n.velocity||90)/127));ctx.globalAlpha=alpha*s.opacity;
   if(s.glow){ctx.shadowColor=col;ctx.shadowBlur=18}
   const g=ctx.createLinearGradient(x,top,x+w,bottom);g.addColorStop(0,col);g.addColorStop(1,mixColor(col,s.end,.22));ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(x,top,w,h,Math.min(7,w/3));ctx.fill();ctx.shadowBlur=0;
   ctx.globalAlpha=.8;ctx.fillStyle="#ffffff";ctx.fillRect(x+2,top+2,Math.max(1,w*.12),Math.max(2,h-4));ctx.globalAlpha=1;
@@ -78,7 +81,7 @@ function drawFrame(elapsedSeconds){
 }
 function frame(now){if(!active&&!recording){raf=0;return}if(previewing&&!recording){elapsed=(now-startedAt)/1000;const total=animationTiming().total;if(elapsed>=total){elapsed=total;previewing=false;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Preview finished"}}
  drawFrame(elapsed);if(previewing||recording||active)raf=requestAnimationFrame(frame);else raf=0}
-function refresh(){noteCache=null;if(canvas&&active&&!previewing&&!recording)drawFrame(elapsed)}
+function refresh(){noteCache=null;renderTimeline=null;if(canvas&&active&&!previewing&&!recording)drawFrame(elapsed)}
 function setActive(value){active=value;if(active){if(!raf)raf=requestAnimationFrame(frame)}else if(!previewing&&!recording&&raf){cancelAnimationFrame(raf);raf=0}}
 function startPreview(){if(previewing){elapsed=(performance.now()-startedAt)/1000;previewing=false;$("animPlay").textContent="▶ Preview";$("animStatus").textContent="Preview paused";return}elapsed=0;startedAt=performance.now();previewing=true;$("animPlay").textContent="Ⅱ Pause";$("animStatus").textContent="Playing preview";setActive(true)}
 async function createExportAudioStream(){
@@ -100,9 +103,8 @@ async function createExportAudioStream(){
  return{destination,piano,output,reverb};
 }
 function scheduleExportNotes(audioPack,songStartTime){
- const p=getProject(),bpm=Math.max(1,p.bpm||120);
  for(const n of allNotes()){
-  const at=songStartTime+n.time*60/bpm,duration=Math.max(.045,n.duration*60/bpm),velocity=Math.max(1,Math.min(127,n.velocity||90))/127;
+  const at=songStartTime+n.startSeconds,duration=n.durationSeconds,velocity=Math.max(1,Math.min(127,n.velocity||90))/127;
   audioPack.piano.triggerAttackRelease(Tone.Frequency(n.midi,"midi"),duration,at,velocity);
  }
 }
