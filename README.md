@@ -15,9 +15,16 @@ A browser-based MIDI editor with piano-roll editing, a synchronized notation vie
 - Files are processed locally in the browser
 
 ## Run locally
+Stage the pinned notation engine once, then start the static server:
+
 ```bash
+npm install --prefix /tmp/verovio verovio@6.4.1
+mkdir -p vendor
+cp /tmp/verovio/node_modules/verovio/dist/verovio-toolkit-wasm.js vendor/
+cp /tmp/verovio/node_modules/verovio/LICENSE vendor/VEROVIO-LICENSE.txt
 python -m http.server 8000
 ```
+
 Open http://localhost:8000.
 
 The app uses Tone.js and @tonejs/midi via browser modules from esm.sh. No backend or build step is required.
