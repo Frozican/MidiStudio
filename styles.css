@@ -63,3 +63,29 @@
  .sheetScroll.osmd-score .score-page svg{width:100%!important;height:auto!important}
  .sheetScroll.osmd-score .score-page:last-child{break-after:auto;page-break-after:auto}
 }
+
+
+/* Refined piano roll and integrated vertical piano keyboard */
+#pianoScroll{
+ background:radial-gradient(ellipse at 20% 0%,#1b1e2b 0%,#11131a 62%);
+ scrollbar-color:#51476f #171923;
+ overscroll-behavior:contain;
+}
+#piano{min-width:760px;min-height:100%;width:max-content}
+#piano svg{
+ display:block;
+ min-width:760px;
+ width:100%;
+ height:auto;
+ cursor:crosshair;
+ touch-action:pan-y;
+ user-select:none;
+}
+#piano svg [data-note]{cursor:grab}
+#piano svg [data-resize]{cursor:ew-resize}
+#piano svg [data-note]:active{cursor:grabbing}
+@media(max-width:850px){
+ #pianoScroll{height:58vh;min-height:390px}
+ #piano{min-width:760px}
+ #piano svg{min-width:760px}
+}
