@@ -114,11 +114,15 @@ async function exportVideo(){
  // Draw the initial frame first and use the raw AudioContext clock for both
  // scheduled MIDI events and video-frame timestamps.
  const rawContext=Tone.getContext().rawContext;
+ // MediaRecorder timestamps the captured video against the browser's monotonic
+ // wall clock. Drive the rendered frames from that same clock rather than the
+ // AudioContext clock, which can advance differently under mobile audio load.
  drawFrame(0);
  recorder.start(1000);
- const recordClockStart=rawContext.currentTime,songStartTime=recordClockStart+3.6;
- scheduleExportNotes(audioPack,songStartTime);
- const exportFrame=()=>{elapsed=rawContext.currentTime-recordClockStart;drawFrame(elapsed);$("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";if(elapsed>=total){elapsed=total;drawFrame(total);recorder.stop();return}requestAnimationFrame(exportFrame)};
+ const recordWallStart=performance.now();
+ const recordAudioStart=rawContext.currentTime;
+ scheduleExportNotes(audioPack,recordAudioStart+3.6);
+ const exportFrame=now=>{elapsed=(now-recordWallStart)/1000;drawFrame(elapsed);$("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";if(elapsed>=total){elapsed=total;drawFrame(total);recorder.stop();return}requestAnimationFrame(exportFrame)};
  requestAnimationFrame(exportFrame);
 }
 export function initAnimation(api){
