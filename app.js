@@ -1,6 +1,6 @@
 import * as Tone from "https://esm.sh/tone@15.1.22";
 import {Midi} from "https://esm.sh/@tonejs/midi@2.0.28";
-import {preloadVerovio, renderScore} from "./score.js";
+import {preloadVerovio, prepareScore, renderScore} from "./score.js";
 
 // Start downloading and initializing the notation engine immediately.
 // It runs in parallel with the editor startup and is reused by Sheet Music.
@@ -106,6 +106,9 @@ async function importMidi(f){
   snapshot();S.bpm=Math.round(tempo);S.numerator=Math.max(1,Math.min(32,Number(ts[0])||4));S.denominator=[1,2,4,8,16,32].includes(Number(ts[1]))?Number(ts[1]):4;
   S.tracks=tracks;S.active=Math.max(0,S.tracks.findIndex(t=>t.notes.length>0));S.selected=null;S.name=f.name;S.playhead=0;S.bars=Math.max(4,Math.ceil(maxBeat()/beatsPerBar()));
   render();changed();toast("Imported "+f.name+(usedSanitizer?" (metadata normalized)":""));
+  // Render every score page in the background immediately after MIDI import.
+  prepareScore(S).then(()=>console.info("Background score engraving complete."))
+    .catch(error=>console.warn("Background engraving failed; it will retry when Sheet Music opens:",error));
  }catch(e){
   console.error("MIDI import failed:",e);
   toast("MIDI import failed: "+(e?.message||String(e)));
