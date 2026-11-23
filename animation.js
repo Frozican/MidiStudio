@@ -11,8 +11,9 @@ function allNotes(){if(noteCache)return noteCache;const p=getProject();noteCache
 function animationTiming(){
  const notes=allNotes(),bpm=Math.max(1,getProject().bpm||120),first=notes.length?notes[0].time*60/bpm:0;
  const lastEnd=notes.reduce((end,n)=>Math.max(end,(n.time+n.duration)*60/bpm),first);
+ const intro=3.5;
  const leadIn=Math.max(.1,(KEY_Y-90)/Math.max(30,settings().speed));
- return{first,leadIn,origin:first-leadIn,total:leadIn+Math.max(0,lastEnd-first)+1.2};
+ return{first,leadIn,intro,origin:first-leadIn,total:intro+leadIn+Math.max(0,lastEnd-first)+1.2};
 }
 function colorFor(note,notes,s){const i=note.gradientIndex||0,t=notes.length<2?0:i/(notes.length-1);return mixColor(s.start,s.end,t)}
 function isWhite(midi){return !BLACK.has(midi%12)}
@@ -57,7 +58,7 @@ function drawKeyboard(c,s,notes,songTime){
  }
 }
 function drawFrame(elapsedSeconds){
- const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),songTime=elapsedSeconds+animationTiming().origin,travel=s.speed,hitY=KEY_Y;
+ const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),timing=animationTiming(),songTime=elapsedSeconds-timing.intro+timing.origin,travel=s.speed,hitY=KEY_Y;
 
  const grad=ctx.createLinearGradient(0,0,WIDTH,HEIGHT);grad.addColorStop(0,s.bg);grad.addColorStop(1,"#11131d");ctx.fillStyle=grad;ctx.fillRect(0,0,WIDTH,HEIGHT);
  ctx.save();ctx.globalAlpha=.16;for(let i=0;i<70;i++){const x=(i*197)%WIDTH,y=(i*113)%KEY_Y;ctx.fillStyle="#b9b0ff";ctx.fillRect(x,y,2,2)}ctx.restore();
@@ -118,21 +119,28 @@ async function exportVideo(){
  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
  recorder.onerror=()=>{$("animStatus").textContent="Video export failed";toast("Video export failed")};
  recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(audioPack){audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose()}recording=false;$("animExport").disabled=false;const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=(getProject().name||"midistudio").replace(/[^a-z0-9-_]+/gi,"-")+"-visualizer."+(mime.startsWith("video/mp4")?"mp4":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);$("animStatus").textContent="Export complete · "+(mime.startsWith("video/mp4")?"MP4":"WebM fallback")+" · "+(blob.size/1048576).toFixed(1)+" MB";toast(mime.startsWith("video/mp4")?"MP4 video exported":"MP4 unavailable here; exported WebM instead")};
- // Draw the initial frame first and use the raw AudioContext clock for both
- // scheduled MIDI events and video-frame timestamps.
+ // Use ONE master clock for the rendered video frames and scheduled audio.
+ // The 3.5-second intro is silence; notes then fall toward the keyboard.
+ // Both the first key illumination and its MIDI event are anchored to the
+ // same AudioContext timestamp, preventing separate-clock drift.
  const rawContext=Tone.getContext().rawContext;
- // Anchor both clocks to MediaRecorder's actual start event. Calling start()
- // does not mean the recorder has begun timestamping tracks yet.
  drawFrame(0);
- let recordWallStart=0,exportStarted=false,startWatchdog=0;
- const exportFrame=now=>{if(!recording)return;elapsed=(now-recordWallStart)/1000;drawFrame(elapsed);$("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";if(elapsed>=total){elapsed=total;drawFrame(total);if(recorder.state==="recording")recorder.stop();return}requestAnimationFrame(exportFrame)};
+ let audioClockStart=0,exportStarted=false,startWatchdog=0;
+ const exportFrame=()=>{
+  if(!recording)return;
+  elapsed=rawContext.currentTime-audioClockStart;
+  drawFrame(elapsed);
+  $("animStatus").textContent="Rendering video · "+Math.min(100,Math.round(elapsed/total*100))+"%";
+  if(elapsed>=total){elapsed=total;drawFrame(total);if(recorder.state==="recording")recorder.stop();return}
+  requestAnimationFrame(exportFrame);
+ };
  const beginExportClock=()=>{
   if(exportStarted||recorder.state!=="recording")return;
   exportStarted=true;clearTimeout(startWatchdog);
-  recordWallStart=performance.now();
-  // The first MIDI event is scheduled for the exact audio-clock instant
-  // at which the visual timeline reaches its first illuminated key.
-  const firstKeyAudioTime=rawContext.currentTime+timing.leadIn;
+  audioClockStart=rawContext.currentTime;
+  // The first MIDI event and first illuminated key occur at
+  // intro + leadIn on this exact shared clock.
+  const firstKeyAudioTime=audioClockStart+timing.intro+timing.leadIn;
   scheduleExportNotes(audioPack,firstKeyAudioTime-timing.first);
   $("animStatus").textContent="Rendering video · 0%";
   requestAnimationFrame(exportFrame);
