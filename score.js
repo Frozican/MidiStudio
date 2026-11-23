@@ -313,50 +313,35 @@ export function buildMusicXml(state) {
     '<part-list>' + partNames + '</part-list>' + parts.join("") + '</score-partwise>';
 }
 
-export async function renderScore(state, host) {
-  host.replaceChildren();
-  host.classList.add("osmd-score");
-  const loading = document.createElement("div");
-  loading.className = "score-loading";
-  loading.textContent = "Loading professional notation engine…";
-  host.append(loading);
-
-  const toolkit = await loadVerovio();
-  const musicXml = buildMusicXml(state);
-  toolkit.setOptions({
-    pageWidth: 2100,
-    pageHeight: 2970,
-    scale: 38,
-    adjustPageWidth: false,
-    adjustPageHeight: false,
-    breaks: "auto",
-    pageMarginTop: 95,
-    pageMarginBottom: 95,
-    pageMarginLeft: 110,
-    pageMarginRight: 110,
-    spacingSystem: 8,
-    spacingStaff: 8,
-    header: "none",
-    footer: "none",
-    svgViewBox: true,
-    engravePage: true
+let preparedScore = null;
+let preparingScore = null;
+function scoreKey(state) {
+  return JSON.stringify({
+    name:state.name,bpm:state.bpm,numerator:state.numerator,denominator:state.denominator,key:state.key,clef:state.clef,
+    tracks:(state.tracks||[]).map(t=>({name:t.name,notes:(t.notes||[]).map(n=>[n.midi,n.time,n.duration,n.velocity,n.__staff])}))
   });
-
-  if (!toolkit.loadData(musicXml)) {
-    throw new Error("Verovio could not parse the generated MusicXML.");
-  }
-  const pageCount = Math.max(1, toolkit.getPageCount());
-  const pages = [];
-  for (let page = 1; page <= pageCount; page++) {
-    const svg = toolkit.renderToSVG(page, {});
-    if (!svg || !svg.includes("<svg")) throw new Error("Verovio failed to render page " + page + ".");
-    const section = document.createElement("section");
-    section.className = "score-page verovio-page";
-    section.innerHTML = svg;
-    pages.push(section);
-  }
-  host.replaceChildren(...pages);
-  host.dataset.pageCount = String(pageCount);
-  host.dataset.engine = "Verovio";
-  return { backend: "Verovio", pageCount };
+}
+async function engrave(state) {
+  const key=scoreKey(state);
+  if(preparedScore?.key===key)return preparedScore;
+  if(preparingScore?.key===key)return preparingScore.promise;
+  const promise=(async()=>{
+    const toolkit=await loadVerovio();
+    toolkit.setOptions({pageWidth:2100,pageHeight:2970,scale:38,adjustPageWidth:false,adjustPageHeight:false,breaks:"auto",pageMarginTop:95,pageMarginBottom:95,pageMarginLeft:110,pageMarginRight:110,spacingSystem:8,spacingStaff:8,header:"none",footer:"none",svgViewBox:true,engravePage:true});
+    if(!toolkit.loadData(buildMusicXml(state)))throw new Error("Verovio could not parse the generated MusicXML.");
+    const pageCount=Math.max(1,toolkit.getPageCount()),pages=[];
+    for(let page=1;page<=pageCount;page++){const svg=toolkit.renderToSVG(page,{});if(!svg||!svg.includes("<svg"))throw new Error("Verovio failed to render page "+page+".");pages.push(svg);}
+    return preparedScore={key,pages,pageCount,backend:"Verovio"};
+  })();
+  preparingScore={key,promise};
+  try{return await promise;}finally{if(preparingScore?.promise===promise)preparingScore=null;}
+}
+export function prepareScore(state){return engrave(state);}
+export async function renderScore(state,host){
+  host.replaceChildren();host.classList.add("osmd-score");
+  const loading=document.createElement("div");loading.className="score-loading";loading.textContent="Preparing A4 score…";host.append(loading);
+  const result=await engrave(state);
+  host.replaceChildren(...result.pages.map(svg=>{const section=document.createElement("section");section.className="score-page verovio-page";section.innerHTML=svg;return section;}));
+  host.dataset.pageCount=String(result.pageCount);host.dataset.engine=result.backend;
+  return {backend:result.backend,pageCount:result.pageCount};
 }
