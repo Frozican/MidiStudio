@@ -100,12 +100,13 @@ function scheduleExportNotes(audioPack,songStartTime){
 async function exportVideo(){
  if(recording)return;
  if(!canvas.captureStream||!window.MediaRecorder){toast("Video recording is not supported in this browser");return}
- const mime=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"].find(t=>MediaRecorder.isTypeSupported(t));if(!mime){toast("No supported video format found");return}
+ const formats=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"];
  const total=3.6+getDuration()+1.2;if(total>900){toast("This animation is too long to export in one video");return}
  previewing=false;recording=true;elapsed=0;active=true;$("animPlay").textContent="▶ Preview";$("animExport").disabled=true;$("animStatus").textContent="Loading piano sound…";
  let audioPack;try{audioPack=await createExportAudioStream()}catch(e){console.error(e);recording=false;$("animExport").disabled=false;$("animStatus").textContent="Audio could not be loaded";toast("Could not load piano audio. Check your connection and try again.");return}
- const videoStream=canvas.captureStream(60),tracks=[...videoStream.getVideoTracks(),...audioPack.destination.stream.getAudioTracks()],stream=new MediaStream(tracks),chunks=[];let recorder;
- try{recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:12000000,audioBitsPerSecond:192000})}catch(e){stream.getTracks().forEach(t=>t.stop());audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose();recording=false;$("animExport").disabled=false;toast("Could not start video export");return}
+ const videoStream=canvas.captureStream(60),tracks=[...videoStream.getVideoTracks(),...audioPack.destination.stream.getAudioTracks()],stream=new MediaStream(tracks),chunks=[];let recorder=null,mime=null;
+ for(const candidate of formats){if(!MediaRecorder.isTypeSupported(candidate))continue;try{recorder=new MediaRecorder(stream,{mimeType:candidate,videoBitsPerSecond:12000000,audioBitsPerSecond:192000});mime=candidate;break}catch(e){console.warn("Video format unavailable:",candidate,e)}}
+ if(!recorder){stream.getTracks().forEach(t=>t.stop());audioPack.piano.dispose();audioPack.output.dispose();audioPack.reverb.dispose();recording=false;$("animExport").disabled=false;$("animStatus").textContent="No supported MP4/WebM encoder";toast("This browser cannot encode MP4 or WebM video");return}
  $("animStatus").textContent="Rendering video with piano audio…";
  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
  recorder.onerror=()=>{$("animStatus").textContent="Video export failed";toast("Video export failed")};
