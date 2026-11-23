@@ -26,7 +26,7 @@ The app uses Tone.js and @tonejs/midi via browser modules from esm.sh. No backen
 The GitHub Actions workflow deploys the repository root. Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
 
 ## Notation limitations
-The current notation view is an editable starter renderer, not a full engraving engine. Automatic key signatures, beaming, tuplets, voice separation, advanced rhythm layout, and clef assignment are not implemented yet.
+The sheet-music view uses the Verovio engraving engine to render MusicXML as multi-page notation. It automatically lays out the score for A4 portrait pages and supports grand-staff piano notation for two imported hand tracks. The notation engine is loaded in the browser from the official Verovio JavaScript/WASM distribution, so an internet connection is required the first time it is opened. MIDI playback, piano-roll editing, and project storage remain separate from the notation renderer.
 
 ## License
 MIT
