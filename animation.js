@@ -17,7 +17,7 @@ function drawKeyboard(c,s,notes,songTime){
   if(!isBlack){c.fillStyle=white;c.fillRect(x,KEY_Y,w,HEIGHT-KEY_Y);c.strokeStyle="#b8b9c4";c.lineWidth=1;c.strokeRect(x,KEY_Y,w,HEIGHT-KEY_Y);if(m%12===0){c.fillStyle="#333746";c.font="bold 11px sans-serif";c.fillText("C"+(Math.floor(m/12)-1),x+4,HEIGHT-13)}}
  }
  for(let m=LOW;m<=HIGH;m++)if(BLACK.has(m%12)){const x=keyX(m,keyW),w=keyW*.64;c.fillStyle=black;c.shadowColor="#000";c.shadowBlur=8;c.fillRect(x+(keyW-w)/2,KEY_Y,w,92);c.shadowBlur=0;c.fillStyle="#35394a";c.fillRect(x+(keyW-w)/2+3,KEY_Y+2,w-6,4)}
- const lit=new Map();for(const n of notes){const at=n.time*60/getProject().bpm;if(Math.abs(at-songTime)<.075)lit.set(n.midi,colorFor(n,notes,s))}
+ const lit=new Map();for(const n of notes){const bpm=Math.max(1,getProject().bpm||120),at=n.time*60/bpm,dur=Math.max(.045,n.duration*60/bpm);if(songTime>=at&&songTime<at+dur)lit.set(n.midi,colorFor(n,notes,s))}
  for(const [m,col] of lit){const x=keyX(m,keyW);c.fillStyle=col;if(BLACK.has(m%12)){const w=keyW*.64;c.fillRect(x+(keyW-w)/2,KEY_Y,w,92)}else c.fillRect(x+1,KEY_Y+1,keyW-2,HEIGHT-KEY_Y-2)}
 }
 function drawFrame(elapsedSeconds){
