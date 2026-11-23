@@ -28,26 +28,26 @@ function loadVerovio() {
     };
     const finish = () => {
       if (settled) return;
-      const module = window.verovio?.module;
-      // The toolkit constructor is exposed before the WASM runtime is ready.
-      // Emscripten's calledRun flag is the readiness check; never instantiate
-      // the toolkit merely because window.verovio.toolkit exists.
-      if (!module || !(module.calledRun || module.runtimeInitialized)) return;
+      const api = window.verovio;
+      if (!api || typeof api.toolkit !== "function") return;
+
+      // Verovio's browser build does not guarantee a public calledRun flag.
+      // The supported readiness signal is module.onRuntimeInitialized. Also
+      // probe the constructor so we handle the case where that callback fired
+      // before our loader attached its hook.
       try {
-        if (typeof window.verovio.toolkit !== "function") {
-          throw new Error("Verovio loaded, but its toolkit constructor is unavailable.");
-        }
-        const instance = new window.verovio.toolkit();
+        const instance = new api.toolkit();
         if (typeof instance.loadData !== "function" ||
             typeof instance.setOptions !== "function" ||
             typeof instance.renderToSVG !== "function") {
-          throw new Error("Verovio WASM initialized without the required rendering methods.");
+          throw new Error("Verovio initialized without the required rendering methods.");
         }
         settled = true;
         cleanup();
         resolve(instance);
       } catch (error) {
-        fail(error);
+        // The constructor is exposed before the WASM runtime is ready.
+        // Keep polling; the runtime callback below will trigger another probe.
       }
     };
 
@@ -64,8 +64,8 @@ function loadVerovio() {
             finally { finish(); }
           };
         }
-        finish();
       }
+      finish();
       if (!settled) pollTimer = setTimeout(watch, 50);
     };
 
