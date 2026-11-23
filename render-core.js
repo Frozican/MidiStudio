@@ -33,7 +33,7 @@ export function createMidiRenderCore(project) {
       const durationBeats = Math.max(0.001, Number(note.duration) || 0.001);
       const startSeconds = beatToSeconds(startBeat);
       const endSeconds = beatToSeconds(startBeat + durationBeats);
-      return Object.freeze({
+      return {
         ...note,
         trackIndex,
         trackName: track?.name || `Track ${trackIndex + 1}`,
@@ -42,7 +42,7 @@ export function createMidiRenderCore(project) {
         startSeconds,
         endSeconds,
         durationSeconds: Math.max(0.001, endSeconds - startSeconds)
-      });
+      };
     });
   }).sort((a, b) => a.startSeconds - b.startSeconds || a.midi - b.midi);
 
