@@ -31,7 +31,24 @@ function drawKeyboard(c,s,notes,songTime){
   c.strokeStyle="#08090d";c.lineWidth=1;c.strokeRect(x,y,w,blackH);
  }
  const lit=new Map();for(const n of notes){const bpm=Math.max(1,getProject().bpm||120),at=n.time*60/bpm,dur=Math.max(.045,n.duration*60/bpm);if(songTime>=at&&songTime<at+dur)lit.set(n.midi,colorFor(n,notes,s))}
- for(const [m,col] of lit){const x=keyX(m,keyW);c.fillStyle=s.pressed;c.shadowColor=s.pressed;c.shadowBlur=s.keyGlow;if(!isWhite(m)){c.beginPath();c.roundRect(x,KEY_Y,blackW,blackH,[0,0,3,3]);c.fill()}else c.fillRect(x+1,KEY_Y+1,keyW-2,HEIGHT-KEY_Y-2);c.shadowBlur=0}
+ // Illuminate the actual key silhouette, not a rectangular overlay.
+ for(const [m,col] of lit){
+  const x=keyX(m,keyW),isNatural=isWhite(m),w=isNatural?keyW-2:blackW,h=isNatural?HEIGHT-KEY_Y-2:blackH-2,y=KEY_Y+(isNatural?1:1);
+  c.save();
+  c.beginPath();
+  c.roundRect(x+(isNatural?1:0),y,w,h,isNatural?[0,0,4,4]:[0,0,3,3]);
+  c.clip();
+  c.shadowColor=s.pressed;c.shadowBlur=s.keyGlow;
+  c.fillStyle=s.pressed;c.globalAlpha=.58;
+  c.fill();
+  c.shadowBlur=0;c.globalAlpha=1;
+  // Keep the key's bevel and edge definition visible while it is lit.
+  const edge=c.createLinearGradient(x,0,x+w,0);
+  edge.addColorStop(0,"#ffffff88");edge.addColorStop(.12,"#ffffff22");edge.addColorStop(.88,"#00000008");edge.addColorStop(1,"#00000066");
+  c.strokeStyle=edge;c.lineWidth=2;
+  c.beginPath();c.roundRect(x+(isNatural?1:0)+.5,y+.5,w-1,h-1,isNatural?[0,0,4,4]:[0,0,3,3]);c.stroke();
+  c.restore();
+ }
 }
 function drawFrame(elapsedSeconds){
  const p=getProject(),s=settings(),notes=allNotes(),bpm=Math.max(1,p.bpm||120),songTime=elapsedSeconds-3.6,travel=s.speed,hitY=KEY_Y;
